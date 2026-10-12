@@ -1,0 +1,158 @@
+{
+  "name": "payment-service",
+  "environments": {
+    "dev": {
+      "backend": {
+        "type": "s3",
+        "bucket": "example-existing-state-bucket",
+        "key": "easytf/dev/terraform.tfstate",
+        "region": "ap-southeast-1",
+        "use_lockfile": true
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "dev",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-dev",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [
+              "application"
+            ],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {
+          "application": {
+            "name": "app-dev",
+            "description": "Application security group",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "ingress": {
+              "https": {
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "Private HTTPS"
+              }
+            },
+            "tags": {}
+          }
+        }
+      }
+    },
+    "prod": {
+      "backend": {
+        "type": "s3",
+        "bucket": "example-existing-state-bucket",
+        "key": "easytf/prod/terraform.tfstate",
+        "region": "ap-southeast-1",
+        "use_lockfile": true
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "prod",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-prod",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.medium",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [
+              "application"
+            ],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {
+          "application": {
+            "name": "app-prod",
+            "description": "Application security group",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "ingress": {
+              "https": {
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "Private HTTPS"
+              }
+            },
+            "tags": {}
+          }
+        }
+      }
+    },
+    "staging": {
+      "backend": {
+        "type": "s3",
+        "bucket": "example-existing-state-bucket",
+        "key": "easytf/staging/terraform.tfstate",
+        "region": "ap-southeast-1",
+        "use_lockfile": true
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "staging",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-staging",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.small",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [
+              "application"
+            ],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {
+          "application": {
+            "name": "app-staging",
+            "description": "Application security group",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "ingress": {
+              "https": {
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "Private HTTPS"
+              }
+            },
+            "tags": {}
+          }
+        }
+      }
+    }
+  }
+}
