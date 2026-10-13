@@ -42,6 +42,17 @@ enum Command {
     },
     /// Restore files from an interrupted generation after the owning process exits
     Recover,
+    /// Read AWS resources using the selected AWS CLI profile (no writes)
+    Discover {
+        #[arg(value_enum)]
+        kind: easytf::discovery::Kind,
+        #[arg(long)]
+        region: String,
+        #[arg(long)]
+        profile: Option<String>,
+        #[arg(long, help = "Subnet ID required to filter security groups by VPC")]
+        subnet: Option<String>,
+    },
     /// Print the demo JSON configuration for scripting or testing
     Example,
     /// Render a deterministic TUI screenshot for development
@@ -136,6 +147,21 @@ fn execute() -> Result<()> {
             } else {
                 println!("Local inputs and generated HCL are valid.\nAWS existence/permissions and Terraform provider validation were not checked.\n{} file(s) differ from the current generated configuration.", altered.len());
             }
+        }
+        Some(Command::Discover {
+            kind,
+            region,
+            profile,
+            subnet,
+        }) => {
+            let items = easytf::discovery::discover(
+                kind,
+                &region,
+                profile.as_deref(),
+                subnet.as_deref(),
+                &std::sync::atomic::AtomicBool::new(false),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&items)?);
         }
         Some(Command::Recover) => {
             let root = ui::expand_path(
