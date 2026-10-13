@@ -490,30 +490,54 @@ impl Structured {
     }
     pub fn draw(&self, frame: &mut Frame, color: bool) {
         let bounds = frame.area();
+        let multiline = self.input.as_ref().is_some_and(|input| {
+            input.value.contains('\n')
+                || matches!(&input.slot, Slot::Key(key) if key == "user_data")
+        });
+        let (wanted_width, wanted_height) = if self.input.is_some() {
+            if multiline {
+                (100, 24)
+            } else {
+                (68, 12)
+            }
+        } else {
+            (88, (self.rows().len() as u16).saturating_add(10))
+        };
+        let width = wanted_width.min(bounds.width.saturating_sub(2));
+        let height = wanted_height.min(bounds.height.saturating_sub(2));
         let area = Rect::new(
-            bounds.x + 1,
-            bounds.y + 1,
-            bounds.width.saturating_sub(2),
-            bounds.height.saturating_sub(2),
+            bounds.x + (bounds.width - width) / 2,
+            bounds.y + (bounds.height - height) / 2,
+            width,
+            height,
         );
         frame.render_widget(Clear, area);
         let page = self.pages.last().unwrap();
-        let path = self
-            .pages
-            .iter()
-            .map(|p| p.title.as_str())
-            .collect::<Vec<_>>()
-            .join(" / ");
         let cyan = if color { Color::Cyan } else { Color::Reset };
+        let title = if let Some(input) = &self.input {
+            if input.adding {
+                format!(" {} · Add entry ", page.title)
+            } else {
+                format!(
+                    " Edit {} ",
+                    match &input.slot {
+                        Slot::Key(key) => key.as_str(),
+                        _ => "value",
+                    }
+                )
+            }
+        } else {
+            format!(" {} ", page.title)
+        };
         let block = Block::bordered()
-            .title(format!(" {path} "))
+            .title(title)
             .border_style(Style::default().fg(cyan));
         let inner = block.inner(area);
         frame.render_widget(block, area);
         let [intro, body, message, footer] = Layout::vertical([
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Length(2),
         ])
         .areas(inner);
@@ -525,16 +549,7 @@ impl Structured {
         };
         frame.render_widget(Paragraph::new(help).wrap(Wrap { trim: false }), intro);
         if let Some(input) = &self.input {
-            let name = match &input.slot {
-                Slot::Key(key) => key.as_str(),
-                _ => "value",
-            };
-            let title = if input.adding {
-                " New entry key ".into()
-            } else {
-                format!(" Edit {name} · Enter/Ctrl+S keeps this value ")
-            };
-            let block = Block::bordered().title(title);
+            let block = Block::bordered().title(" Value ");
             let inner = block.inner(body);
             let width = inner.width.max(1) as usize;
             let mut lines = vec![String::new()];
@@ -624,7 +639,7 @@ impl Structured {
             Paragraph::new(self.message.as_str()).wrap(Wrap { trim: false }),
             message,
         );
-        frame.render_widget(Paragraph::new(if self.input.is_some() { "Type/Paste value · Enter or Ctrl+S Keep value · Ctrl+U Clear · Esc Cancel value" } else { "↑↓ / Tab Navigate · Enter Edit · a Add entry · d Unset/Delete · Ctrl+S Done · Esc Discard page" }).wrap(Wrap { trim: false }), footer);
+        frame.render_widget(Paragraph::new(if self.input.is_some() { "Enter Keep value · Ctrl+U Clear · Esc Cancel" } else { "↑↓ / Tab Navigate · Enter Edit · a Add entry · d Unset/Delete · Ctrl+S Done · Esc Discard page" }).wrap(Wrap { trim: false }), footer);
     }
 }
 
