@@ -50,7 +50,10 @@ esac
             pump()
 
         try:
-            pump()
+            ready_deadline = time.monotonic() + 10
+            while b"EASYTF" not in transcript and time.monotonic() < ready_deadline:
+                pump()
+            assert b"EASYTF" in transcript, "TUI did not finish entering raw mode"
             if demo:
                 # Browse subnet and SG inside the real EC2 editor.
                 press(b"\r")

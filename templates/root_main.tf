@@ -29,6 +29,8 @@ module "instances" {
   for_each = var.instances
   source   = "../../modules/ec2"
 
+  configuration       = each.value.configuration
+  resource_key        = each.key
   name                = each.value.name
   ami_id              = each.value.ami_id
   instance_type       = each.value.instance_type

@@ -190,6 +190,22 @@ fn execute() -> Result<()> {
             );
             match view.as_str() {
                 "welcome" => app.stage = ui::Stage::Welcome,
+                "sections" => {
+                    for (code, mods) in [
+                        (
+                            crossterm::event::KeyCode::Enter,
+                            crossterm::event::KeyModifiers::NONE,
+                        ),
+                        (
+                            crossterm::event::KeyCode::Char('g'),
+                            crossterm::event::KeyModifiers::CONTROL,
+                        ),
+                    ] {
+                        app.handle(crossterm::event::Event::Key(
+                            crossterm::event::KeyEvent::new(code, mods),
+                        ));
+                    }
+                }
                 "form" => app.handle(crossterm::event::Event::Key(
                     crossterm::event::KeyEvent::new(
                         crossterm::event::KeyCode::Enter,

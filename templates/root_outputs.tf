@@ -2,11 +2,12 @@ output "instances" {
   description = "Managed EC2 instance IDs, addresses, and network context."
   value = {
     for key, instance in module.instances : key => {
-      id                 = instance.id
-      private_ip         = instance.private_ip
-      public_ip          = instance.public_ip
-      subnet_id          = instance.subnet_id
-      security_group_ids = instance.security_group_ids
+      iam_instance_profile = instance.iam_instance_profile
+      id                   = instance.id
+      private_ip           = instance.private_ip
+      public_ip            = instance.public_ip
+      subnet_id            = instance.subnet_id
+      security_group_ids   = instance.security_group_ids
     }
   }
 }

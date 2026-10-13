@@ -1,0 +1,161 @@
+{
+  "name": "payment-service",
+  "environments": {
+    "dev": {
+      "backend": {
+        "type": "local"
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "dev",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-dev",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [
+              "application"
+            ],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {},
+            "configuration": {
+              "instance_role": "ExistingApplicationRole",
+              "key_name": "existing-team-key",
+              "monitoring": true,
+              "disable_api_termination": true,
+              "metadata_options": [
+                {
+                  "http_tokens": "required",
+                  "http_endpoint": "enabled"
+                }
+              ],
+              "ebs_block_device": [
+                {
+                  "device_name": "/dev/sdf",
+                  "volume_size": 30,
+                  "volume_type": "gp3",
+                  "encrypted": true,
+                  "tags": {
+                    "Purpose": "data"
+                  }
+                },
+                {
+                  "device_name": "/dev/sdg",
+                  "volume_size": 50,
+                  "volume_type": "gp3",
+                  "encrypted": true
+                }
+              ],
+              "root_block_device": [
+                {
+                  "volume_size": 40,
+                  "volume_type": "gp3",
+                  "encrypted": true
+                }
+              ],
+              "user_data": "#!/bin/bash\necho \"${HOME}\"\n"
+            }
+          }
+        },
+        "security_groups": {
+          "application": {
+            "name": "app-dev",
+            "description": "Multiple inbound rules",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "ingress": {
+              "https": {
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "https"
+              },
+              "ssh_office": {
+                "protocol": "tcp",
+                "from_port": 22,
+                "to_port": 22,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "ssh_office"
+              },
+              "metrics": {
+                "protocol": "tcp",
+                "from_port": 9090,
+                "to_port": 9090,
+                "cidr_ipv4": "10.0.0.0/16",
+                "description": "metrics"
+              }
+            },
+            "tags": {}
+          }
+        }
+      }
+    },
+    "prod": {
+      "backend": {
+        "type": "local"
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "prod",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-prod",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.medium",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {}
+      }
+    },
+    "staging": {
+      "backend": {
+        "type": "local"
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "Environment": "staging",
+          "Project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-staging",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.small",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {}
+      }
+    }
+  }
+}

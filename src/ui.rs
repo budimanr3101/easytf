@@ -1,4 +1,4 @@
-use crate::model::{self, Backend, Environment, Instance, Project, Rule, SecurityGroup};
+use crate::model::{self, Backend, Environment, Instance, Project, SecurityGroup};
 use crate::project::{self, Change, Loaded};
 use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -49,6 +49,7 @@ enum FieldKind {
     Text,
     Choice(Vec<String>),
     Toggle,
+    Structured(crate::config::Node),
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +75,22 @@ impl Field {
             help,
             value: value.into(),
             kind: FieldKind::Text,
+            locked: false,
+        }
+    }
+    fn structured(
+        name: &'static str,
+        label: &'static str,
+        help: &'static str,
+        node: crate::config::Node,
+        value: serde_json::Value,
+    ) -> Self {
+        Self {
+            name,
+            label,
+            help,
+            value: value.to_string(),
+            kind: FieldKind::Structured(node),
             locked: false,
         }
     }
@@ -156,7 +173,7 @@ impl Editor {
                     matches!(self.get("sg_source"), "Use existing" | "Existing + linked")
                 }
                 "sg_keys" => matches!(self.get("sg_source"), "Link project" | "Existing + linked"),
-                "new_sg_key" | "new_sg_name" | "new_sg_ingress" => {
+                "new_sg_key" | "new_sg_name" | "new_sg_ingress" | "new_sg_egress" => {
                     self.get("sg_source") == "Create new"
                 }
                 "new_sg_port" | "new_sg_cidr" => {
@@ -194,7 +211,7 @@ impl Editor {
                     .clone();
             }
             FieldKind::Toggle => field.value = (field.value != "true").to_string(),
-            FieldKind::Text => {}
+            FieldKind::Text | FieldKind::Structured(_) => {}
         }
         self.cursor = field.value.chars().count();
     }
@@ -346,6 +363,7 @@ pub struct App {
     compact_preview: bool,
     compact_review_diff: bool,
     discovery: Option<Picker>,
+    structured: Option<crate::structured::Structured>,
 }
 
 impl App {
@@ -402,6 +420,7 @@ impl App {
             compact_preview: false,
             compact_review_diff: false,
             discovery: None,
+            structured: None,
         }
     }
 
@@ -490,6 +509,23 @@ impl App {
     }
 
     pub fn handle(&mut self, event: Event) {
+        if let Some(structured) = &mut self.structured {
+            if let Some(outcome) = structured.handle(event) {
+                if let crate::structured::Outcome::Saved(value) = outcome {
+                    if let Some(editor) = &mut self.editor {
+                        if let Some(field) = editor
+                            .fields
+                            .iter_mut()
+                            .find(|f| f.name == structured.field)
+                        {
+                            field.value = value.to_string();
+                        }
+                    }
+                }
+                self.structured = None;
+            }
+            return;
+        }
         if self.discovery.is_some() {
             if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
@@ -519,6 +555,40 @@ impl App {
             return;
         }
         if self.editor.is_some() {
+            if key.code == KeyCode::Char('g') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                let editor = self.editor.as_mut().unwrap();
+                if let Some(index) = editor
+                    .fields
+                    .iter()
+                    .position(|f| f.name == "configuration_sections")
+                {
+                    editor.selected = index;
+                    editor.action = None;
+                    let field = &editor.fields[index];
+                    if let FieldKind::Structured(node) = &field.kind {
+                        self.structured = Some(crate::structured::Structured::new(
+                            field.name,
+                            field.label,
+                            node.clone(),
+                            serde_json::from_str(&field.value).unwrap_or_else(|_| node.empty()),
+                        ));
+                    }
+                }
+                return;
+            }
+            let editor = self.editor.as_ref().unwrap();
+            if editor.action.is_none() && key.code == KeyCode::Enter {
+                let field = &editor.fields[editor.selected];
+                if let FieldKind::Structured(node) = &field.kind {
+                    self.structured = Some(crate::structured::Structured::new(
+                        field.name,
+                        field.label,
+                        node.clone(),
+                        serde_json::from_str(&field.value).unwrap_or_else(|_| node.empty()),
+                    ));
+                    return;
+                }
+            }
             if key.code == KeyCode::Char('b') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 self.start_discovery();
                 return;
@@ -1157,11 +1227,19 @@ impl App {
                     "Blank uses the standard AWS credential chain; no credentials are stored",
                     values.aws_profile.clone().unwrap_or_default(),
                 ),
-                Field::text(
+                Field::structured(
                     "tags",
-                    "Default tags (JSON)",
-                    "Example: {\"Project\":\"payment\",\"Environment\":\"dev\"}",
-                    serde_json::to_string(&values.tags).unwrap(),
+                    "Default tags",
+                    "Add key-value tags applied to all generated resources",
+                    crate::config::Node::map(
+                        crate::config::Node::scalar(
+                            "string",
+                            true,
+                            "Tag value. Enter keeps this value only.",
+                        ),
+                        "Add/edit/remove tag key-value pairs.",
+                    ),
+                    serde_json::to_value(&values.tags).unwrap(),
                 ),
             ],
         ));
@@ -1268,7 +1346,7 @@ impl App {
                 Field::text(
                     "ami",
                     "AMI ID",
-                    "Existing AMI; verify its region and instance architecture with AWS/Terraform",
+                    "Required unless supplied by a launch template; verify region and architecture",
                     old.map(|i| i.ami_id.as_str()).unwrap_or(""),
                 ),
                 Field::text(
@@ -1321,28 +1399,24 @@ impl App {
                     "Blank derives <instance_name>-sg",
                     "",
                 ),
-                Field::toggle(
+                Field::structured(
                     "new_sg_ingress",
-                    "Add a TCP ingress rule",
-                    "Off creates no inbound rules; outbound IPv4 is enabled",
-                    false,
+                    "New SG ingress rules",
+                    "Multiple named rules; empty means no inbound access.",
+                    crate::config::rules_schema(),
+                    serde_json::json!({}),
                 ),
-                Field::text(
-                    "new_sg_port",
-                    "TCP ingress port",
-                    "Required only when the ingress rule is enabled",
-                    "443",
-                ),
-                Field::text(
-                    "new_sg_cidr",
-                    "Allowed IPv4 CIDR",
-                    "Choose the network permitted to reach this port",
-                    "10.0.0.0/16",
+                Field::structured(
+                    "new_sg_egress",
+                    "New SG egress rules",
+                    "Multiple named outbound rules.",
+                    crate::config::rules_schema(),
+                    serde_json::to_value(model::default_egress()).unwrap(),
                 ),
                 Field::text(
                     "volume",
                     "Root volume size (GiB)",
-                    "Encrypted gp3 volume; positive integer",
+                    "Default encrypted gp3 size; ignored when root disk overrides or a launch template supplies storage",
                     old.map(|i| i.root_volume_gib.to_string())
                         .unwrap_or_else(|| "20".into()),
                 ),
@@ -1352,21 +1426,51 @@ impl App {
                     "Routing/IGW must support internet access; no routes are generated",
                     old.is_some_and(|i| i.associate_public_ip),
                 ),
-                Field::text(
+                Field::structured(
                     "tags",
-                    "Instance tags (JSON)",
+                    "Instance tags",
                     "Merged with default tags; Name is set from AWS Name tag",
-                    old.map(|i| serde_json::to_string(&i.tags).unwrap())
-                        .unwrap_or_else(|| "{}".into()),
+                    crate::config::Node::map(
+                        crate::config::Node::scalar(
+                            "string",
+                            true,
+                            "Tag value. Enter keeps this value only.",
+                        ),
+                        "Add/edit/remove tag key-value pairs.",
+                    ),
+                    old.map(|i| serde_json::to_value(&i.tags).unwrap())
+                        .unwrap_or_else(|| serde_json::json!({})),
                 ),
             ],
         ));
+        let configuration = old.map(|instance| &instance.configuration);
+        let mut node = crate::config::Node::scalar(
+            "object",
+            false,
+            "Choose an optional section. Empty sections leave provider defaults unchanged.",
+        );
+        let mut values = serde_json::Map::new();
+        for (name, label, keys) in crate::config::GROUPS {
+            let mut group = crate::config::group_schema(keys);
+            group.label = (*label).into();
+            node.properties.insert((*name).into(), group);
+            let value = configuration
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter(|(key, _)| keys.contains(&key.as_str()))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect::<serde_json::Map<String, serde_json::Value>>()
+                })
+                .unwrap_or_default();
+            values.insert((*name).into(), serde_json::Value::Object(value));
+        }
+        self.editor.as_mut().unwrap().fields.push(Field::structured("configuration_sections", "Optional EC2 configuration · 6 sections", "Enter opens Identity, Storage, Networking, Security, Placement, and Launch sections. Ctrl+G opens this menu from any field.", node, serde_json::Value::Object(values)));
     }
 
     fn edit_security_group(&mut self, key: Option<String>) {
         let env = &self.project.environments[&self.env_name()];
         let old = key.as_ref().and_then(|k| env.values.security_groups.get(k));
-        let rule = old.and_then(|g| g.ingress.get("application"));
         let default_key = next_key(
             "shared_sg",
             env.values.security_groups.keys().map(String::as_str),
@@ -1407,50 +1511,36 @@ impl App {
                     "Its VPC is read from data.aws_subnet",
                     old.map(|g| g.subnet_id.as_str()).unwrap_or(""),
                 ),
-                Field::toggle(
-                    "ingress_enabled",
-                    "Application ingress rule",
-                    "Other rules loaded from tfvars are preserved",
-                    rule.is_some(),
+                Field::structured(
+                    "ingress_rules",
+                    "Ingress rules",
+                    "Multiple named ingress rules. Enter opens the rule list.",
+                    crate::config::rules_schema(),
+                    old.map(|g| serde_json::to_value(&g.ingress).unwrap())
+                        .unwrap_or_else(|| serde_json::json!({})),
                 ),
-                Field::choice(
-                    "protocol",
-                    "Application protocol",
-                    "TCP, UDP, or all IP protocols",
-                    &["tcp", "udp", "-1"],
-                    rule.map(|r| r.protocol.as_str()).unwrap_or("tcp"),
+                Field::structured(
+                    "egress_rules",
+                    "Egress rules",
+                    "Multiple named egress rules. Delete all entries for no outbound rules.",
+                    crate::config::rules_schema(),
+                    old.map(|g| serde_json::to_value(&g.egress).unwrap())
+                        .unwrap_or_else(|| serde_json::to_value(model::default_egress()).unwrap()),
                 ),
-                Field::text(
-                    "from_port",
-                    "From port",
-                    "Start of allowed port range",
-                    rule.and_then(|r| r.from_port).unwrap_or(443).to_string(),
-                ),
-                Field::text(
-                    "to_port",
-                    "To port",
-                    "End of allowed port range",
-                    rule.and_then(|r| r.to_port).unwrap_or(443).to_string(),
-                ),
-                Field::text(
-                    "cidr",
-                    "Allowed IPv4 CIDR",
-                    "Network address and prefix, such as 10.0.0.0/16",
-                    rule.map(|r| r.cidr_ipv4.as_str()).unwrap_or("10.0.0.0/16"),
-                ),
-                Field::toggle(
-                    "egress",
-                    "Allow all outbound IPv4",
-                    "Controls the all_ipv4 rule; other loaded egress rules are preserved",
-                    old.map(|g| g.egress.contains_key("all_ipv4"))
-                        .unwrap_or(true),
-                ),
-                Field::text(
+                Field::structured(
                     "tags",
-                    "SG tags (JSON)",
+                    "SG tags",
                     "Resource-specific tags",
-                    old.map(|g| serde_json::to_string(&g.tags).unwrap())
-                        .unwrap_or_else(|| "{}".into()),
+                    crate::config::Node::map(
+                        crate::config::Node::scalar(
+                            "string",
+                            true,
+                            "Tag value. Enter keeps this value only.",
+                        ),
+                        "Add/edit/remove tag key-value pairs.",
+                    ),
+                    old.map(|g| serde_json::to_value(&g.tags).unwrap())
+                        .unwrap_or_else(|| serde_json::json!({})),
                 ),
             ],
         ));
@@ -1612,7 +1702,19 @@ impl App {
                         .map_err(|_| anyhow::anyhow!("Root volume must be a positive integer"))?,
                     associate_public_ip: editor.get("public_ip") == "true",
                     tags: serde_json::from_str(editor.get("tags"))?,
+                    configuration: BTreeMap::new(),
                 };
+                let sections: BTreeMap<String, serde_json::Value> =
+                    serde_json::from_str(editor.get("configuration_sections"))?;
+                for value in sections.values() {
+                    if let Some(values) = value.as_object() {
+                        instance.configuration.extend(
+                            values
+                                .iter()
+                                .map(|(key, value)| (key.clone(), value.clone())),
+                        );
+                    }
+                }
                 match editor.get("sg_source") {
                     "Use existing" => {
                         instance.existing_security_group_ids =
@@ -1636,23 +1738,7 @@ impl App {
                         if env.values.security_groups.contains_key(&sg_key) {
                             bail!("Security group '{sg_key}' already exists. Choose Link project or a new key");
                         }
-                        let mut ingress = BTreeMap::new();
-                        if editor.get("new_sg_ingress") == "true" {
-                            let port = editor
-                                .get("new_sg_port")
-                                .parse::<u16>()
-                                .map_err(|_| anyhow::anyhow!("TCP ingress port must be 0–65535"))?;
-                            ingress.insert(
-                                "application".into(),
-                                Rule {
-                                    protocol: "tcp".into(),
-                                    from_port: Some(port),
-                                    to_port: Some(port),
-                                    cidr_ipv4: editor.get("new_sg_cidr").into(),
-                                    description: "Allow application traffic".into(),
-                                },
-                            );
-                        }
+                        let ingress = serde_json::from_str(editor.get("new_sg_ingress"))?;
                         let sg = SecurityGroup {
                             name: if editor.get("new_sg_name").is_empty() {
                                 format!("{}-sg", instance.name)
@@ -1662,7 +1748,7 @@ impl App {
                             description: "Managed by EasyTF".into(),
                             subnet_id: instance.subnet_id.clone(),
                             ingress,
-                            egress: model::default_egress(),
+                            egress: serde_json::from_str(editor.get("new_sg_egress"))?,
                             tags: BTreeMap::new(),
                         };
                         env.values.security_groups.insert(sg_key.clone(), sg);
@@ -1697,43 +1783,8 @@ impl App {
                 sg.description = editor.get("description").into();
                 sg.subnet_id = editor.get("subnet").into();
                 sg.tags = serde_json::from_str(editor.get("tags"))?;
-                if editor.get("ingress_enabled") == "true" {
-                    let all = editor.get("protocol") == "-1";
-                    sg.ingress.insert(
-                        "application".into(),
-                        Rule {
-                            protocol: editor.get("protocol").into(),
-                            from_port: if all {
-                                None
-                            } else {
-                                Some(
-                                    editor.get("from_port").parse::<u16>().map_err(|_| {
-                                        anyhow::anyhow!("From port must be 0–65535")
-                                    })?,
-                                )
-                            },
-                            to_port: if all {
-                                None
-                            } else {
-                                Some(
-                                    editor
-                                        .get("to_port")
-                                        .parse::<u16>()
-                                        .map_err(|_| anyhow::anyhow!("To port must be 0–65535"))?,
-                                )
-                            },
-                            cidr_ipv4: editor.get("cidr").into(),
-                            description: "Allow application traffic".into(),
-                        },
-                    );
-                } else {
-                    sg.ingress.remove("application");
-                }
-                if editor.get("egress") == "true" {
-                    sg.egress.extend(model::default_egress());
-                } else {
-                    sg.egress.remove("all_ipv4");
-                }
+                sg.ingress = serde_json::from_str(editor.get("ingress_rules"))?;
+                sg.egress = serde_json::from_str(editor.get("egress_rules"))?;
                 env.values.security_groups.insert(key.into(), sg);
             }
         }
@@ -1894,7 +1945,7 @@ impl App {
                         self.stage.label()
                     )),
                     Span::styled(
-                        "   v0.1.0",
+                        concat!("   v", env!("CARGO_PKG_VERSION")),
                         Style::default().fg(self.color(Color::DarkGray)),
                     ),
                 ]),
@@ -1974,7 +2025,7 @@ impl App {
             status,
         );
         let hints = if self.editor.is_some() {
-            "Tab / Enter Next   Ctrl+N Save & continue   Ctrl+B Browse AWS   Esc Cancel"
+            "Tab / Enter Open/Next   Ctrl+G EC2 sections   Ctrl+N Save   Ctrl+B Browse AWS   Esc Cancel"
         } else {
             match self.stage {
                 Stage::Welcome => "↑↓ Select   Enter Open   ? Help   q Quit",
@@ -2001,6 +2052,9 @@ impl App {
         }
         if self.discovery.is_some() {
             self.draw_picker(frame);
+        }
+        if let Some(structured) = &self.structured {
+            structured.draw(frame, self.color);
         }
     }
 
@@ -2361,7 +2415,7 @@ impl App {
                     }
                 }
                 FieldKind::Choice(_) => "‹ ",
-                FieldKind::Text => "",
+                FieldKind::Text | FieldKind::Structured(_) => "",
             };
             let suffix = if matches!(field.kind, FieldKind::Choice(_)) {
                 " ›"
@@ -2385,7 +2439,16 @@ impl App {
                     start_char += 1;
                 }
             }
-            let text: String = field.value.chars().skip(start_char).collect();
+            let text: String = if matches!(field.kind, FieldKind::Structured(_)) {
+                format!(
+                    "{} · Enter to open",
+                    crate::structured::summary(
+                        &serde_json::from_str(&field.value).unwrap_or(serde_json::Value::Null)
+                    )
+                )
+            } else {
+                field.value.chars().skip(start_char).collect()
+            };
             frame.render_widget(
                 Paragraph::new(format!("{prefix}{text}{suffix}")).style(
                     Style::default()
@@ -2634,12 +2697,13 @@ impl App {
         };
         let (title, text) = match modal {
             Modal::Help if self.editor.is_some() => (" Form help ", "Tab / ↑↓  Navigate fields and action buttons
-Enter      Next text field or activate selected action
+Enter      Open tags/collections; next text field; activate action
 ← / →      Change choice; choose an action
 Space      Toggle checkbox
 Ctrl+U     Clear current text field
 Ctrl+N     Save & continue
 Ctrl+S     Save & stay
+Ctrl+G     Open optional EC2 sections
 Ctrl+B     Browse AWS on AMI/subnet/existing SG fields
 Esc        Discard unsaved form changes
 
@@ -2979,6 +3043,57 @@ mod tests {
             app.project.environments["dev"].values.instances["web_primary"]
                 .existing_security_group_ids,
             vec![before]
+        );
+    }
+    #[test]
+    fn enter_on_tags_opens_key_value_editor_and_does_not_save_or_exit_instance() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Project::demo(), temp.path().join("demo"), None, true, true);
+        app.draft_path = temp.path().join("draft.json");
+        app.edit_instance(Some("web_primary".into()));
+        let editor = app.editor.as_mut().unwrap();
+        editor.selected = editor
+            .fields
+            .iter()
+            .position(|field| field.name == "tags")
+            .unwrap();
+        app.handle(key(KeyCode::Enter));
+        assert!(app.structured.is_some());
+        assert!(app.editor.is_some());
+        assert!(app.modal.is_none());
+        app.handle(key(KeyCode::Char('a')));
+        for c in "Owner".chars() {
+            app.handle(key(KeyCode::Char(c)));
+        }
+        app.handle(key(KeyCode::Enter));
+        for c in "Platform".chars() {
+            app.handle(key(KeyCode::Char(c)));
+        }
+        app.handle(key(KeyCode::Enter));
+        assert!(app.structured.is_some());
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.structured.is_none());
+        assert!(app.editor.is_some());
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(app.editor.as_ref().unwrap().get("tags"))
+                .unwrap()["Owner"],
+            "Platform"
+        );
+        assert!(
+            app.project.environments["dev"].values.instances["web_primary"]
+                .tags
+                .is_empty()
+        );
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('n'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(
+            app.project.environments["dev"].values.instances["web_primary"].tags["Owner"],
+            "Platform"
         );
     }
 }

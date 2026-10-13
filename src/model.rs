@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const SCHEMA_VERSION: u32 = 1;
-pub const TEMPLATE_VERSION: &str = "0.1.0";
+pub const TEMPLATE_VERSION: &str = "0.2.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +65,8 @@ pub struct Instance {
     pub associate_public_ip: bool,
     #[serde(default)]
     pub tags: BTreeMap<String, String>,
+    #[serde(default)]
+    pub configuration: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,6 +162,7 @@ impl Project {
                     subnet_id: "subnet-0123456789abcdef0".into(),
                     existing_security_group_ids: vec!["sg-0123456789abcdef0".into()],
                     security_group_keys: vec![],
+                    configuration: BTreeMap::new(),
                     root_volume_gib: 20,
                     associate_public_ip: false,
                     tags: BTreeMap::new(),
@@ -216,13 +219,37 @@ impl Project {
                 if instance.name.trim().is_empty() || instance.instance_type.trim().is_empty() {
                     bail!("{name}/{key}: instance name and type are required");
                 }
-                aws_id(&instance.ami_id, "ami-")?;
+                crate::config::validate_ec2(&instance.configuration)?;
+                let enabled = |key: &str| {
+                    instance
+                        .configuration
+                        .get(key)
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|v| !v.is_empty())
+                };
+                let eni_mode = enabled("primary_network_interface") || enabled("network_interface");
+                if !instance.ami_id.is_empty() || !enabled("launch_template") {
+                    aws_id(&instance.ami_id, "ami-")?;
+                }
+                if eni_mode
+                    && (instance.associate_public_ip
+                        || !instance.existing_security_group_ids.is_empty()
+                        || !instance.security_group_keys.is_empty()
+                        || instance
+                            .configuration
+                            .get("private_ip")
+                            .is_some_and(|v| !v.is_null()))
+                {
+                    bail!("{name}/{key}: existing ENIs own their security groups and IPs. Clear EC2 SG references, public IP, and private_ip; the selected subnet remains VPC/subnet validation context");
+                }
                 aws_id(&instance.subnet_id, "subnet-")?;
                 if instance.root_volume_gib == 0 {
                     bail!("{name}/{key}: root volume must be greater than zero");
                 }
                 if instance.existing_security_group_ids.is_empty()
                     && instance.security_group_keys.is_empty()
+                    && !eni_mode
+                    && !enabled("launch_template")
                 {
                     bail!("{name}/{key}: select at least one security group");
                 }

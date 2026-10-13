@@ -13,3 +13,7 @@ output "subnet_id" {
 output "security_group_ids" {
   value = aws_instance.this.vpc_security_group_ids
 }
+
+output "iam_instance_profile" {
+  value = aws_instance.this.iam_instance_profile
+}

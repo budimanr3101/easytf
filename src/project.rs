@@ -47,7 +47,12 @@ pub fn load(root: &Path) -> Result<Loaded> {
     reject_symlinks(root, ".easytf.toml")?;
     let metadata: Metadata = toml::from_str(&fs::read_to_string(root.join(".easytf.toml"))
         .context("This folder is not an EasyTF project. Choose a new output folder; arbitrary Terraform project adoption is outside this MVP.")?)?;
-    if metadata.schema_version != SCHEMA_VERSION || metadata.template_version != TEMPLATE_VERSION {
+    if metadata.schema_version != SCHEMA_VERSION
+        || !matches!(
+            metadata.template_version.as_str(),
+            TEMPLATE_VERSION | "0.1.0"
+        )
+    {
         bail!("Unsupported project schema/template version; automatic template migration is not supported");
     }
     let mut project = Project {

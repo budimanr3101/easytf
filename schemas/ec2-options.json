@@ -1,0 +1,669 @@
+{
+  "kind": "object",
+  "properties": {
+    "availability_zone": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional availability zone. Must match the selected subnet."
+    },
+    "disable_api_stop": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional protection against stopping the instance through the EC2 API."
+    },
+    "disable_api_termination": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional protection against terminating the instance through the EC2 API."
+    },
+    "ebs_optimized": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional EBS optimized IO; availability depends on instance type."
+    },
+    "enable_primary_ipv6": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional primary IPv6 address behavior; requires IPv6 networking support."
+    },
+    "force_destroy": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional force destruction when stop/termination protection blocks deletion. Review before enabling."
+    },
+    "get_password_data": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional retrieval of encrypted Windows administrator password data."
+    },
+    "hibernation": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional EC2 hibernation support; AMI, instance type and root disk must support it."
+    },
+    "host_id": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional dedicated host ID; conflicts with host_resource_group_arn."
+    },
+    "host_resource_group_arn": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional dedicated host resource group ARN; conflicts with host_id."
+    },
+    "iam_instance_profile": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional existing IAM instance profile name, not a role ARN. The profile contains the EC2 role."
+    },
+    "instance_initiated_shutdown_behavior": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional stop or terminate behavior when the OS shuts down."
+    },
+    "ipv6_address_count": {
+      "kind": "number",
+      "required": false,
+      "help": "Optional number of IPv6 addresses. Do not also set ipv6_addresses."
+    },
+    "ipv6_addresses": {
+      "kind": "list",
+      "required": false,
+      "help": "Optional explicit IPv6 addresses; subnet must support IPv6.",
+      "element": {
+        "kind": "string",
+        "required": true,
+        "help": "Required when this section or entry is enabled."
+      }
+    },
+    "key_name": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional existing EC2 key pair name in this region. Leave unset for SSM-only access."
+    },
+    "monitoring": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional detailed CloudWatch monitoring; AWS charges may apply."
+    },
+    "placement_group": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional placement group name; do not also set placement_group_id."
+    },
+    "placement_group_id": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional placement group ID; do not also set placement_group."
+    },
+    "placement_partition_number": {
+      "kind": "number",
+      "required": false,
+      "help": "Optional partition within a partition placement group."
+    },
+    "private_ip": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional private IPv4 address; it must belong to the subnet."
+    },
+    "secondary_private_ips": {
+      "kind": "list",
+      "required": false,
+      "help": "Optional secondary private IPv4 addresses in the selected subnet.",
+      "element": {
+        "kind": "string",
+        "required": true,
+        "help": "Required when this section or entry is enabled."
+      }
+    },
+    "source_dest_check": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional source/destination checking. Disable only when this instance routes traffic."
+    },
+    "tenancy": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional default, dedicated, or host tenancy; instance type and placement must support it."
+    },
+    "user_data": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional boot script. Paste multiline text; Ctrl+S saves the text editor. Do not include secrets."
+    },
+    "user_data_base64": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional base64 boot data; conflicts with user_data."
+    },
+    "user_data_replace_on_change": {
+      "kind": "bool",
+      "required": false,
+      "help": "Optional replacement when boot user data changes; review the Terraform plan."
+    },
+    "volume_tags": {
+      "kind": "map",
+      "required": false,
+      "help": "Optional tags for volumes; do not combine with tags on individual block devices.",
+      "element": {
+        "kind": "string",
+        "required": true,
+        "help": "Required when this section or entry is enabled."
+      }
+    },
+    "capacity_reservation_specification": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "capacity_reservation_preference": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "capacity_reservation_target": {
+            "kind": "list",
+            "element": {
+              "kind": "object",
+              "properties": {
+                "capacity_reservation_id": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                },
+                "capacity_reservation_resource_group_arn": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                }
+              },
+              "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+            },
+            "max_items": 1,
+            "help": "Optional capacity reservation ID or resource group ARN."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional capacity reservation preference and target."
+    },
+    "cpu_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "amd_sev_snp": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "core_count": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "nested_virtualization": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "threads_per_core": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional CPU core/thread, AMD SEV-SNP and nested virtualization settings."
+    },
+    "credit_specification": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "cpu_credits": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional CPU credit behavior for burstable instances."
+    },
+    "ebs_block_device": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "delete_on_termination": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional deletion of this disk/interface when the instance terminates."
+          },
+          "device_name": {
+            "kind": "string",
+            "required": true,
+            "help": "Required EBS device mapping name, for example /dev/sdf. Guest NVMe names may differ."
+          },
+          "encrypted": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional disk encryption; a KMS key requires encryption."
+          },
+          "iops": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional provisioned IOPS; compatible volume type and size are required."
+          },
+          "kms_key_id": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional KMS key ARN/ID for disk encryption."
+          },
+          "snapshot_id": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional EBS snapshot to initialize an additional volume."
+          },
+          "tags": {
+            "kind": "map",
+            "required": false,
+            "help": "Optional collection; Enter opens the entry editor.",
+            "element": {
+              "kind": "string",
+              "required": true,
+              "help": "Required when this section or entry is enabled."
+            }
+          },
+          "throughput": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional provisioned throughput for gp3 volumes."
+          },
+          "volume_size": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional disk size in GiB. For additional EBS, provide this or a snapshot_id."
+          },
+          "volume_type": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional standard, gp2, gp3, io1, io2, st1, or sc1 volume type."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": null,
+      "help": "Optional additional EBS disks. Add one entry per device. Terraform manages all non-root EBS mappings; do not mix with external attachments."
+    },
+    "enclave_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "enabled": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional Nitro Enclaves configuration; requires a compatible instance."
+    },
+    "ephemeral_block_device": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "device_name": {
+            "kind": "string",
+            "required": true,
+            "help": "Required EBS device mapping name, for example /dev/sdf. Guest NVMe names may differ."
+          },
+          "no_device": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "virtual_name": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": null,
+      "help": "Optional instance-store mappings; device and instance type must support them."
+    },
+    "instance_market_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "market_type": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "spot_options": {
+            "kind": "list",
+            "element": {
+              "kind": "object",
+              "properties": {
+                "instance_interruption_behavior": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                },
+                "max_price": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                },
+                "spot_instance_type": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                },
+                "valid_until": {
+                  "kind": "string",
+                  "required": false,
+                  "help": "Optional; unset uses the AWS provider default."
+                }
+              },
+              "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+            },
+            "max_items": 1,
+            "help": "Optional section; add an entry to enable it."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional market type and Spot request settings."
+    },
+    "launch_template": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "name": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "version": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional existing launch template. Explicit basic settings override template values. Root disk defaults are omitted when using a template."
+    },
+    "maintenance_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "auto_recovery": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional automatic recovery behavior."
+    },
+    "metadata_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "http_endpoint": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional enabled or disabled metadata endpoint."
+          },
+          "http_protocol_ipv6": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional enabled or disabled IPv6 metadata endpoint."
+          },
+          "http_put_response_hop_limit": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional metadata response hop limit, 1\u201364."
+          },
+          "http_tokens": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional optional or required; required enforces IMDSv2 tokens."
+          },
+          "instance_metadata_tags": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional enabled or disabled access to instance tags through metadata."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional EC2 instance metadata settings. http_tokens=required enables IMDSv2 enforcement."
+    },
+    "network_interface": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "delete_on_termination": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional deletion of this disk/interface when the instance terminates."
+          },
+          "device_index": {
+            "kind": "number",
+            "required": true,
+            "help": "Required when this section or entry is enabled."
+          },
+          "network_card_index": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "network_interface_id": {
+            "kind": "string",
+            "required": true,
+            "help": "Required existing network interface ID, for example eni-0123456789abcdef0."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": null,
+      "help": "Optional legacy ENI attachments (deprecated by provider). Prefer primary_network_interface and separate attachment resources."
+    },
+    "primary_network_interface": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "network_interface_id": {
+            "kind": "string",
+            "required": true,
+            "help": "Required existing network interface ID, for example eni-0123456789abcdef0."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional existing primary ENI. It owns subnet/SG/IP settings; clear instance SG and public IP settings."
+    },
+    "private_dns_name_options": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "enable_resource_name_dns_a_record": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "enable_resource_name_dns_aaaa_record": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "hostname_type": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional private DNS hostname type and IPv4/IPv6 DNS records."
+    },
+    "root_block_device": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "delete_on_termination": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional deletion of this disk/interface when the instance terminates."
+          },
+          "encrypted": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional disk encryption; a KMS key requires encryption."
+          },
+          "iops": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional provisioned IOPS; compatible volume type and size are required."
+          },
+          "kms_key_id": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional KMS key ARN/ID for disk encryption."
+          },
+          "tags": {
+            "kind": "map",
+            "required": false,
+            "help": "Optional collection; Enter opens the entry editor.",
+            "element": {
+              "kind": "string",
+              "required": true,
+              "help": "Required when this section or entry is enabled."
+            }
+          },
+          "throughput": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional provisioned throughput for gp3 volumes."
+          },
+          "volume_size": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional disk size in GiB. For additional EBS, provide this or a snapshot_id."
+          },
+          "volume_type": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional standard, gp2, gp3, io1, io2, st1, or sc1 volume type."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": 1,
+      "help": "Optional root disk overrides. Unset keeps the legacy root size with encrypted gp3."
+    },
+    "secondary_network_interface": {
+      "kind": "list",
+      "element": {
+        "kind": "object",
+        "properties": {
+          "delete_on_termination": {
+            "kind": "bool",
+            "required": false,
+            "help": "Optional deletion of this disk/interface when the instance terminates."
+          },
+          "device_index": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "interface_type": {
+            "kind": "string",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "network_card_index": {
+            "kind": "number",
+            "required": true,
+            "help": "Required when this section or entry is enabled."
+          },
+          "private_ip_address_count": {
+            "kind": "number",
+            "required": false,
+            "help": "Optional; unset uses the AWS provider default."
+          },
+          "secondary_subnet_id": {
+            "kind": "string",
+            "required": true,
+            "help": "Required when this section or entry is enabled."
+          }
+        },
+        "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+      },
+      "max_items": null,
+      "help": "Optional secondary-network ENI configuration; requires supported EC2/network features."
+    },
+    "timeouts": {
+      "kind": "object",
+      "properties": {
+        "create": {
+          "kind": "string",
+          "required": false,
+          "help": "Optional; unset uses the AWS provider default."
+        },
+        "delete": {
+          "kind": "string",
+          "required": false,
+          "help": "Optional; unset uses the AWS provider default."
+        },
+        "read": {
+          "kind": "string",
+          "required": false,
+          "help": "Optional; unset uses the AWS provider default."
+        },
+        "update": {
+          "kind": "string",
+          "required": false,
+          "help": "Optional; unset uses the AWS provider default."
+        }
+      },
+      "help": "Optional Terraform operation timeouts, for example create=30m."
+    },
+    "instance_role": {
+      "kind": "string",
+      "required": false,
+      "help": "Optional existing IAM role NAME. EasyTF creates an instance profile for it; do not also set iam_instance_profile."
+    }
+  },
+  "help": "Optional configuration. Select a setting to edit; unset values use provider defaults."
+}

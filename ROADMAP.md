@@ -10,6 +10,9 @@
 - Read-only subnet/SG discovery and an Amazon Linux 2023 AMI picker; manual IDs remain available.
 - Background discovery, search, selection, cancellation, and credential error handling.
 
+- Multi-rule ingress/egress and structured tag editing.
+- Six optional EC2 sections, IAM role/profile and key pair support, multi-EBS, metadata/CPU/launch/network blocks.
+
 ## Next
 
 1. Terraform command integration: fmt, init, validate, plan, streaming logs and cancellation.
