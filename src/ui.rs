@@ -124,6 +124,7 @@ struct Editor {
     fields: Vec<Field>,
     selected: usize,
     cursor: usize,
+    action: Option<usize>,
 }
 
 impl Editor {
@@ -135,6 +136,7 @@ impl Editor {
             fields,
             selected: 0,
             cursor,
+            action: None,
         }
     }
     fn get(&self, name: &str) -> &str {
@@ -290,6 +292,35 @@ enum Modal {
     Quit,
 }
 
+type DiscoveryResult =
+    std::sync::Arc<std::sync::Mutex<Option<Result<Vec<crate::discovery::Item>, String>>>>;
+#[derive(Clone)]
+struct Picker {
+    field: String,
+    result: DiscoveryResult,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    items: Vec<crate::discovery::Item>,
+    selected: usize,
+    query: String,
+    loading: bool,
+    error: Option<String>,
+    context: String,
+    chosen: Vec<String>,
+}
+impl Picker {
+    fn filtered(&self) -> Vec<&crate::discovery::Item> {
+        let query = self.query.to_lowercase();
+        self.items
+            .iter()
+            .filter(|i| {
+                format!("{} {}", i.id, i.label)
+                    .to_lowercase()
+                    .contains(&query)
+            })
+            .collect()
+    }
+}
+
 #[derive(Clone)]
 pub struct App {
     pub project: Project,
@@ -314,6 +345,7 @@ pub struct App {
     screen_width: std::cell::Cell<u16>,
     compact_preview: bool,
     compact_review_diff: bool,
+    discovery: Option<Picker>,
 }
 
 impl App {
@@ -354,17 +386,22 @@ impl App {
             message: if demo {
                 "Demo workspace — replace placeholder AWS IDs before planning.".into()
             } else {
-                "Files only · AWS discovery and Terraform apply are outside this MVP.".into()
+                "Files only · Ctrl+B explicitly browses AWS from resource fields. No Terraform apply.".into()
             },
             error: false,
             quit: false,
             dirty: demo,
             color,
-            draft_path: home.join(".local/state/easytf/draft.json"),
+            draft_path: std::env::var_os("XDG_STATE_HOME")
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+                .unwrap_or_else(|| home.join(".local/state"))
+                .join("easytf/draft.json"),
             review_files: vec![],
             screen_width: std::cell::Cell::new(140),
             compact_preview: false,
             compact_review_diff: false,
+            discovery: None,
         }
     }
 
@@ -429,9 +466,9 @@ impl App {
             self.edit_backend();
         }
         match stage {
-            Stage::Project => self.status("Step 1/5: name your project and choose its folder. Enter advances; Ctrl+N finishes the form.", false),
+            Stage::Project => self.status("Step 1/5: name your project and choose its folder. Tab or Enter advances to the action buttons. Ctrl+N saves and continues.", false),
             Stage::Environments => self.status("Step 2/5: Space selects environments. Enter edits region/profile. Ctrl+N continues to backend.", false),
-            Stage::Backend => self.status("Step 3/5: choose state storage. Enter advances; Ctrl+N finishes and opens resources.", false),
+            Stage::Backend => self.status("Step 3/5: choose state storage. Tab reaches Save & continue. Ctrl+N saves and opens resources.", false),
             Stage::Resources => self.status("Step 4/5: a adds EC2, s adds SG. Tab changes environment. Press r when ready to review files.", false),
             _ => {}
         }
@@ -453,6 +490,14 @@ impl App {
     }
 
     pub fn handle(&mut self, event: Event) {
+        if self.discovery.is_some() {
+            if let Event::Key(key) = event {
+                if key.kind == KeyEventKind::Press {
+                    self.handle_picker(key);
+                }
+            }
+            return;
+        }
         if let Event::Paste(value) = &event {
             if let Some(editor) = &mut self.editor {
                 editor.paste(value);
@@ -474,6 +519,52 @@ impl App {
             return;
         }
         if self.editor.is_some() {
+            if key.code == KeyCode::Char('b') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.start_discovery();
+                return;
+            }
+            let editor = self.editor.as_ref().unwrap();
+            if let Some(action) = editor.action {
+                match key.code {
+                    KeyCode::Enter => {
+                        match action {
+                            0 => self.commit_editor(true),
+                            1 => self.commit_editor(false),
+                            _ => {
+                                self.editor = None;
+                                self.status("Form cancelled. No changes saved.", false);
+                            }
+                        }
+                        return;
+                    }
+                    KeyCode::Left | KeyCode::BackTab => {
+                        self.editor.as_mut().unwrap().action = Some((action + 2) % 3);
+                        return;
+                    }
+                    KeyCode::Right => {
+                        self.editor.as_mut().unwrap().action = Some((action + 1) % 3);
+                        return;
+                    }
+                    KeyCode::Up => {
+                        self.editor.as_mut().unwrap().action = None;
+                        return;
+                    }
+                    KeyCode::Tab | KeyCode::Down => {
+                        let editor = self.editor.as_mut().unwrap();
+                        editor.action = None;
+                        editor.selected = editor.visible()[0];
+                        editor.cursor = editor.fields[editor.selected].value.chars().count();
+                        return;
+                    }
+                    _ => {}
+                }
+            } else if editor.visible().last() == Some(&editor.selected)
+                && matches!(key.code, KeyCode::Tab | KeyCode::Down | KeyCode::Enter)
+                && key.modifiers.is_empty()
+            {
+                self.editor.as_mut().unwrap().action = Some(0);
+                return;
+            }
             match key.code {
                 KeyCode::Esc => {
                     self.editor = None;
@@ -484,14 +575,18 @@ impl App {
                     }
                     self.status("Unsaved form changes discarded.", false);
                 }
-                KeyCode::F(1) => self.modal = Some(Modal::Help),
-                KeyCode::Enter
-                    if key.modifiers.contains(KeyModifiers::CONTROL)
-                        || self
-                            .editor
-                            .as_ref()
-                            .is_some_and(|e| e.visible().last() == Some(&e.selected)) =>
+                KeyCode::F(3) | KeyCode::Char('p')
+                    if key.code == KeyCode::F(3)
+                        || key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
+                    self.preview = (self.preview + 1) % 3;
+                    self.preview_scroll = 0;
+                    if self.screen_width.get() < 110 {
+                        self.status("Side preview needs a terminal at least 110 columns wide. Save the form, then press p for full-width previews.", false);
+                    }
+                }
+                KeyCode::F(1) => self.modal = Some(Modal::Help),
+                KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.commit_editor(true)
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -608,18 +703,24 @@ impl App {
             Stage::Environments => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
                 KeyCode::Down | KeyCode::Char('j') => {
-                    self.selected = (self.selected + 1).min(self.environment_options.len() - 1)
+                    self.selected = (self.selected + 1).min(self.environment_options.len() + 1)
                 }
-                KeyCode::Char(' ') => self.toggle_environment(),
+                KeyCode::Char(' ') if self.selected < self.environment_options.len() => {
+                    self.toggle_environment()
+                }
+                KeyCode::Enter if self.selected == self.environment_options.len() => self.handle(
+                    Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+                ),
+                KeyCode::Enter if self.selected == self.environment_options.len() + 1 => {
+                    self.handle(Event::Key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE)))
+                }
                 KeyCode::Enter => {
                     let name = self.environment_options[self.selected].clone();
                     if self.project.environments.contains_key(&name) {
                         self.edit_environment(&name);
                     } else {
-                        self.status(
-                            "Select this environment with Space before editing it.",
-                            true,
-                        );
+                        self.toggle_environment();
+                        self.edit_environment(&name);
                     }
                 }
                 KeyCode::Char('a') => {
@@ -719,6 +820,258 @@ impl App {
                 _ => {}
             },
         }
+    }
+
+    fn start_discovery(&mut self) {
+        let Some(editor) = &self.editor else {
+            return;
+        };
+        let field = editor.fields[editor.selected].name.to_string();
+        let kind = match field.as_str() {
+            "subnet" => crate::discovery::Kind::Subnets,
+            "existing_sg_ids" => crate::discovery::Kind::SecurityGroups,
+            "ami" => crate::discovery::Kind::Images,
+            _ => {
+                self.status("Browse AWS is available on AMI, subnet, and existing SG fields. Other fields accept manual values.", true);
+                return;
+            }
+        };
+        let Some(env) = self.project.environments.get(&self.env_name()) else {
+            return;
+        };
+        let region = env.values.aws_region.clone();
+        let profile = env.values.aws_profile.clone();
+        let subnet = editor.get("subnet").to_string();
+        let chosen = if field == "existing_sg_ids" {
+            comma_list(editor.get(&field))
+        } else {
+            Vec::new()
+        };
+        let context = format!(
+            "{} · profile {} · {}",
+            region,
+            profile.as_deref().unwrap_or("default credential chain"),
+            if field == "ami" {
+                "Amazon Linux 2023 · first 200 results; custom AMIs: manual ID"
+            } else {
+                "Read-only AWS discovery"
+            }
+        );
+        let result = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.discovery = Some(Picker {
+            field,
+            result: result.clone(),
+            cancel: cancel.clone(),
+            items: Vec::new(),
+            selected: 0,
+            query: String::new(),
+            loading: true,
+            error: None,
+            context,
+            chosen,
+        });
+        std::thread::spawn(move || {
+            let response = crate::discovery::discover(
+                kind,
+                &region,
+                profile.as_deref(),
+                Some(&subnet),
+                &cancel,
+            )
+            .map_err(|e| format!("{e:#}"));
+            if let Ok(mut result) = result.lock() {
+                *result = Some(response);
+            }
+        });
+    }
+
+    fn poll_discovery(&mut self) {
+        let Some(picker) = &mut self.discovery else {
+            return;
+        };
+        let response = picker
+            .result
+            .lock()
+            .ok()
+            .and_then(|mut result| result.take());
+        if let Some(response) = response {
+            picker.loading = false;
+            match response {
+                Ok(items) => picker.items = items,
+                Err(error) => picker.error = Some(error),
+            }
+        }
+    }
+
+    fn handle_picker(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Esc
+            || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+        {
+            if let Some(picker) = self.discovery.take() {
+                picker
+                    .cancel
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            self.status("AWS browsing closed. Form values were preserved.", false);
+            return;
+        }
+        let picker = self.discovery.as_mut().unwrap();
+        if picker.loading {
+            return;
+        }
+        match key.code {
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                picker.query.clear();
+                picker.chosen.clear();
+                picker.selected = 0;
+            }
+            KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
+            KeyCode::Down => {
+                picker.selected =
+                    (picker.selected + 1).min(picker.filtered().len().saturating_sub(1))
+            }
+            KeyCode::Backspace => {
+                picker.query.pop();
+                picker.selected = 0;
+            }
+            KeyCode::Char(' ') if picker.field == "existing_sg_ids" => {
+                if let Some(item) = picker.filtered().get(picker.selected) {
+                    let id = item.id.clone();
+                    if picker.chosen.contains(&id) {
+                        picker.chosen.retain(|chosen| chosen != &id);
+                    } else {
+                        picker.chosen.push(id);
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let Some(id) = picker
+                    .filtered()
+                    .get(picker.selected)
+                    .map(|item| item.id.clone())
+                else {
+                    return;
+                };
+                let field_name = picker.field.clone();
+                let value = if field_name == "existing_sg_ids" {
+                    if picker.chosen.is_empty() {
+                        picker.chosen.push(id);
+                    }
+                    picker.chosen.sort();
+                    picker.chosen.dedup();
+                    picker.chosen.join(", ")
+                } else {
+                    id
+                };
+                if let Some(editor) = &mut self.editor {
+                    if let Some(field) = editor.fields.iter_mut().find(|f| f.name == field_name) {
+                        field.value = value;
+                        editor.cursor = field.value.chars().count();
+                    }
+                }
+                self.discovery = None;
+                self.status("AWS selection added to the form. Save the form to keep it in the project draft.", false);
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                if picker.query.len() < 200 {
+                    picker.query.push(c);
+                    picker.selected = 0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn draw_picker(&self, frame: &mut Frame) {
+        let picker = self.discovery.as_ref().unwrap();
+        let area = centered(frame.area(), 110, frame.area().height.saturating_sub(4));
+        frame.render_widget(Clear, area);
+        let block = self.block(" Browse AWS · Esc Cancel ", true);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        let [context, search, body, footer] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(2),
+        ])
+        .areas(inner);
+        frame.render_widget(
+            Paragraph::new(picker.context.as_str())
+                .wrap(Wrap { trim: false })
+                .style(Style::default().fg(self.color(Color::Gray))),
+            context,
+        );
+        frame.render_widget(
+            Paragraph::new(format!(
+                "Search: {} · {} SG selected",
+                picker.query,
+                picker.chosen.len()
+            ))
+            .style(Style::default().fg(self.color(Color::Cyan))),
+            search,
+        );
+        if picker.loading {
+            frame.render_widget(
+                Paragraph::new("Loading from AWS… You can cancel with Esc."),
+                body,
+            );
+        } else if let Some(error) = &picker.error {
+            frame.render_widget(
+                Paragraph::new(error.as_str())
+                    .wrap(Wrap { trim: false })
+                    .style(Style::default().fg(self.color(Color::Red))),
+                body,
+            );
+        } else if picker.filtered().is_empty() {
+            frame.render_widget(
+                Paragraph::new("No matching resources. Change the search or enter an ID manually."),
+                body,
+            );
+        } else {
+            let items = picker
+                .filtered()
+                .iter()
+                .map(|item| {
+                    ListItem::new(vec![
+                        Line::from(format!(
+                            "{} {}",
+                            if picker.chosen.contains(&item.id) {
+                                "[x]"
+                            } else {
+                                "[ ]"
+                            },
+                            item.id
+                        )),
+                        Line::from(item.label.as_str()),
+                    ])
+                })
+                .collect::<Vec<_>>();
+            let mut state = ListState::default().with_selected(Some(picker.selected));
+            frame.render_stateful_widget(
+                List::new(items).highlight_symbol(" > ").highlight_style(
+                    Style::default()
+                        .bg(self.color(Color::Rgb(25, 37, 49)))
+                        .fg(self.color(Color::Cyan)),
+                ),
+                body,
+                &mut state,
+            );
+        }
+        frame.render_widget(
+            Paragraph::new(if picker.field == "existing_sg_ids" {
+                "↑↓ Select · Space Toggle SG · Ctrl+U Clear · Enter Use selection · Esc Cancel"
+            } else {
+                "↑↓ Select · Enter Use resource · Type to search · Esc Cancel"
+            })
+            .wrap(Wrap { trim: false }),
+            footer,
+        );
     }
 
     fn switch_environment(&mut self, direction: isize) {
@@ -1113,12 +1466,15 @@ impl App {
                     "Form saved to the working draft. Review before generating files.",
                     false,
                 );
+                self.save_draft();
+                if self.error {
+                    return;
+                }
                 match editor.kind {
                     EditKind::Project if advance => self.go(Stage::Environments),
                     EditKind::Backend if advance => self.go(Stage::Resources),
                     _ => {}
                 }
-                self.save_draft();
             }
             Err(error) => self.status(error.to_string(), true),
         }
@@ -1618,7 +1974,7 @@ impl App {
             status,
         );
         let hints = if self.editor.is_some() {
-            "Enter Next / Finish   Tab Fields   ←→ Choice   Ctrl+N Finish   Ctrl+S Save   Esc Cancel"
+            "Tab / Enter Next   Ctrl+N Save & continue   Ctrl+B Browse AWS   Esc Cancel"
         } else {
             match self.stage {
                 Stage::Welcome => "↑↓ Select   Enter Open   ? Help   q Quit",
@@ -1642,6 +1998,9 @@ impl App {
         }
         if self.modal.is_some() {
             self.draw_modal(frame);
+        }
+        if self.discovery.is_some() {
+            self.draw_picker(frame);
         }
     }
 
@@ -1769,7 +2128,7 @@ impl App {
     }
 
     fn draw_environments(&self, frame: &mut Frame, area: Rect) {
-        let items: Vec<_> = self
+        let mut items: Vec<_> = self
             .environment_options
             .iter()
             .map(|name| {
@@ -1799,6 +2158,8 @@ impl App {
                 ])
             })
             .collect();
+        items.push(ListItem::new("[ Add custom environment ]"));
+        items.push(ListItem::new("[ Continue to backend → ]"));
         let mut state = ListState::default().with_selected(Some(self.selected));
         frame.render_stateful_widget(
             List::new(items)
@@ -1920,15 +2281,52 @@ impl App {
     }
 
     fn draw_editor(&self, frame: &mut Frame, area: Rect, editor: &Editor) {
-        let title = format!(" {} ", editor.title);
+        let visible_count = editor.visible().len();
+        let field_position = editor
+            .visible()
+            .iter()
+            .position(|i| *i == editor.selected)
+            .unwrap_or(0)
+            + 1;
+        let title = format!(
+            " {} · field {field_position}/{visible_count} ",
+            editor.title
+        );
         let block = self.block(&title, true);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         if inner.height < 4 {
             return;
         }
-        let [fields_area, help_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(inner);
+        let [fields_area, help_area, actions_area] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(3),
+            Constraint::Length(2),
+        ])
+        .areas(inner);
+        let actions = [" Save & continue ", " Save & stay ", " Cancel "];
+        frame.render_widget(
+            Paragraph::new(Line::from(
+                actions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, label)| {
+                        Span::styled(
+                            *label,
+                            if editor.action == Some(i) {
+                                Style::default()
+                                    .bg(self.color(Color::Cyan))
+                                    .fg(self.color(Color::Black))
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(self.color(Color::Cyan))
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+            actions_area,
+        );
         let visible = editor.visible();
         let selected_pos = visible
             .iter()
@@ -1938,7 +2336,7 @@ impl App {
         let start = selected_pos.saturating_sub(capacity - 1);
         for (row, index) in visible.iter().skip(start).take(capacity).enumerate() {
             let field = &editor.fields[*index];
-            let active = *index == editor.selected;
+            let active = *index == editor.selected && editor.action.is_none();
             let y = fields_area.y + row as u16 * 3;
             let width = fields_area.width.saturating_sub(2);
             let label = format!(
@@ -2019,14 +2417,25 @@ impl App {
             }
         }
         frame.render_widget(
-            Paragraph::new(editor.fields[editor.selected].help)
-                .style(Style::default().fg(self.color(Color::Yellow)))
-                .wrap(Wrap { trim: false })
-                .block(
-                    Block::default()
-                        .borders(Borders::TOP)
-                        .border_style(Style::default().fg(self.color(Color::DarkGray))),
-                ),
+            Paragraph::new(format!(
+                "{}{}",
+                editor.fields[editor.selected].help,
+                if matches!(
+                    editor.fields[editor.selected].name,
+                    "subnet" | "ami" | "existing_sg_ids"
+                ) {
+                    " · Ctrl+B: browse AWS"
+                } else {
+                    ""
+                }
+            ))
+            .style(Style::default().fg(self.color(Color::Yellow)))
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .borders(Borders::TOP)
+                    .border_style(Style::default().fg(self.color(Color::DarkGray))),
+            ),
             help_area,
         );
     }
@@ -2101,7 +2510,7 @@ impl App {
         } else {
             match self.preview {
                 0 => (
-                    " TFVARS · F3 switches view ",
+                    " TFVARS · Ctrl+P switches view ",
                     hcl::to_string(&env.values)
                         .unwrap_or_default()
                         .lines()
@@ -2138,7 +2547,7 @@ impl App {
                     lines.push(Line::from(
                         "Existing resources are referenced through data sources.",
                     ));
-                    (" Dependencies · F3 switches view ", lines)
+                    (" Dependencies · Ctrl+P switches view ", lines)
                 }
                 _ => {
                     let mut lines = vec![
@@ -2158,7 +2567,7 @@ impl App {
                     }
                     lines.push(Line::from("existing_subnets → VPC / availability zone"));
                     lines.push(Line::from("security_groups → ID / primary VPC"));
-                    (" Outputs · F3 switches view ", lines)
+                    (" Outputs · Ctrl+P switches view ", lines)
                 }
             }
         };
@@ -2224,7 +2633,21 @@ impl App {
             return;
         };
         let (title, text) = match modal {
-            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nr / Ctrl+N   Review files\np            Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nEnter        Next field; finish at the last field
+            Modal::Help if self.editor.is_some() => (" Form help ", "Tab / ↑↓  Navigate fields and action buttons
+Enter      Next text field or activate selected action
+← / →      Change choice; choose an action
+Space      Toggle checkbox
+Ctrl+U     Clear current text field
+Ctrl+N     Save & continue
+Ctrl+S     Save & stay
+Ctrl+B     Browse AWS on AMI/subnet/existing SG fields
+Esc        Discard unsaved form changes
+
+Use the visible Save & continue, Save & stay, or Cancel buttons.
+AWS browsing uses the active environment's profile and region.
+
+Enter / Esc closes this help.".into()),
+            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nr / Ctrl+N   Review files\np            Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nEnter        Next field; activate action buttons
 Ctrl+N       Save form and continue
 F1           Help\nEsc          Discard unsaved form changes\n\nText fields accept letters such as q, s, and g normally.\nEnter / Esc closes this help.".into()),
             Modal::Generate => (" Generate files ", format!("Write Terraform configuration to:\n\n{}\n\n{} environment(s) · {} changed file(s)\n\nExisting subnet and SG IDs remain references.\nManual edits and stale file changes block publishing.\nNo Terraform apply or destroy is executed.\n\nEnter / y Generate files     Esc / n Cancel", self.output.display(), self.project.environments.len(), self.review_files.iter().filter(|f| f.action != "unchanged").count())),
@@ -2250,6 +2673,7 @@ pub fn run(app: &mut App) -> Result<()> {
         crossterm::execute!(std::io::stdout(), event::EnableBracketedPaste)?;
         let result = (|| {
             while !app.quit {
+                app.poll_discovery();
                 terminal.draw(|frame| app.draw(frame))?;
                 if event::poll(std::time::Duration::from_millis(200))? {
                     app.handle(event::read()?);
@@ -2257,6 +2681,11 @@ pub fn run(app: &mut App) -> Result<()> {
             }
             Ok(())
         })();
+        if let Some(picker) = &app.discovery {
+            picker
+                .cancel
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let _ = crossterm::execute!(std::io::stdout(), event::DisableBracketedPaste);
         result
     })
@@ -2455,5 +2884,101 @@ mod tests {
         assert_eq!(app.stage, Stage::Review);
         app.handle(key(KeyCode::Char('g')));
         assert!(matches!(app.modal, Some(Modal::Generate)));
+    }
+    #[test]
+    fn forms_have_keyboard_actions_and_errors_keep_values() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(
+            Project::empty("test"),
+            temp.path().join("out"),
+            None,
+            false,
+            true,
+        );
+        app.draft_path = temp.path().join("draft.json");
+        app.go(Stage::Project);
+        app.handle(key(KeyCode::Tab));
+        app.handle(key(KeyCode::Enter));
+        assert_eq!(app.editor.as_ref().unwrap().action, Some(0));
+        app.handle(key(KeyCode::Enter));
+        assert_eq!(app.stage, Stage::Environments);
+        app.selected = app.environment_options.len() + 1;
+        app.handle(key(KeyCode::Enter));
+        assert_eq!(app.stage, Stage::Backend);
+        app.handle(key(KeyCode::Tab));
+        app.handle(key(KeyCode::Enter));
+        app.handle(key(KeyCode::Enter));
+        assert_eq!(app.stage, Stage::Resources);
+        app.handle(key(KeyCode::Char('a')));
+        let field_count = app.editor.as_ref().unwrap().visible().len();
+        for _ in 0..field_count {
+            app.handle(key(KeyCode::Tab));
+        }
+        assert_eq!(app.editor.as_ref().unwrap().action, Some(0));
+        app.handle(key(KeyCode::Enter));
+        assert!(app.error);
+        assert!(app.editor.is_some());
+        app.handle(key(KeyCode::Right));
+        app.handle(key(KeyCode::Right));
+        app.handle(key(KeyCode::Enter));
+        assert!(app.editor.is_none());
+        assert!(app.project.environments["dev"].values.instances.is_empty());
+    }
+
+    #[test]
+    fn aws_picker_search_multiselect_and_cancel_preserve_forms() {
+        let mut app = App::new(Project::demo(), PathBuf::from("demo"), None, true, true);
+        app.edit_instance(Some("web_primary".into()));
+        let make_picker = || Picker {
+            field: "existing_sg_ids".into(),
+            result: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            items: vec![
+                crate::discovery::Item {
+                    id: "sg-11111111".into(),
+                    label: "web".into(),
+                    vpc: Some("vpc-12345678".into()),
+                },
+                crate::discovery::Item {
+                    id: "sg-22222222".into(),
+                    label: "database".into(),
+                    vpc: Some("vpc-12345678".into()),
+                },
+            ],
+            selected: 0,
+            query: String::new(),
+            loading: false,
+            error: None,
+            context: "test".into(),
+            chosen: Vec::new(),
+        };
+        app.discovery = Some(make_picker());
+        let before = app
+            .editor
+            .as_ref()
+            .unwrap()
+            .get("existing_sg_ids")
+            .to_string();
+        app.handle(key(KeyCode::Char(' ')));
+        let cancel = app.discovery.as_ref().unwrap().cancel.clone();
+        app.handle(key(KeyCode::Esc));
+        assert!(cancel.load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(app.editor.as_ref().unwrap().get("existing_sg_ids"), before);
+        app.discovery = Some(make_picker());
+        for c in "database".chars() {
+            app.handle(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.discovery.as_ref().unwrap().filtered().len(), 1);
+        app.handle(key(KeyCode::Enter));
+        assert!(app.discovery.is_none());
+        assert_eq!(
+            app.editor.as_ref().unwrap().get("existing_sg_ids"),
+            "sg-22222222"
+        );
+        assert_eq!(
+            app.project.environments["dev"].values.instances["web_primary"]
+                .existing_security_group_ids,
+            vec![before]
+        );
     }
 }
