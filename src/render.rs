@@ -45,6 +45,10 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>> {
     let mut files = BTreeMap::from([
         (".easytf.toml".into(), toml::to_string_pretty(&metadata)?),
         (".gitignore".into(), ".terraform/\n*.tfstate\n*.tfstate.*\n*.tfplan\ncrash.log\ncrash.*.log\n.easytf.lock\n.easytf/transaction.json\n.easytf/last-generated.json\n.easytf-stage-*/\n".into()),
+        ("modules/load-balancer/main.tf".into(), include_str!("../templates/load-balancer/main.tf").into()),
+        ("modules/load-balancer/variables.tf".into(), include_str!("../templates/load-balancer/variables.tf").into()),
+        ("modules/load-balancer/outputs.tf".into(), include_str!("../templates/load-balancer/outputs.tf").into()),
+        ("modules/load-balancer/versions.tf".into(), MODULE_VERSIONS.into()),
         ("modules/ec2/main.tf".into(), EC2_MAIN.into()),
         ("modules/ec2/variables.tf".into(), EC2_VARIABLES.into()),
         ("modules/ec2/outputs.tf".into(), EC2_OUTPUTS.into()),
@@ -63,7 +67,25 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>> {
             ("versions.tf", ROOT_VERSIONS),
             ("outputs.tf", ROOT_OUTPUTS),
         ] {
-            files.insert(format!("{prefix}/{file}"), content.into());
+            let content = match file {
+                "main.tf" => format!(
+                    "{}\n{}",
+                    content,
+                    include_str!("../templates/load-balancer/root.tf")
+                ),
+                "variables.tf" => format!(
+                    "{}\n{}",
+                    content,
+                    include_str!("../templates/load-balancer/root-variables.tf")
+                ),
+                "outputs.tf" => format!(
+                    "{}\n{}",
+                    content,
+                    include_str!("../templates/load-balancer/root-outputs.tf")
+                ),
+                _ => content.into(),
+            };
+            files.insert(format!("{prefix}/{file}"), content);
         }
         files.insert(
             format!("{prefix}/terraform.tfvars"),
@@ -91,7 +113,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>> {
         };
         files.insert(format!("{prefix}/backend.tf"), backend.into());
     }
-    let mut readme = format!("# {}\n\nGenerated with EasyTF {}.\n\n## Configuration\n\nEdit each environment's `terraform.tfvars` to change resource values.\nReopen this project with `easytf --project .`; the TUI reads those values.\nThe sample/demo IDs are placeholders and must be replaced with real AWS IDs.\n\n", project.name, TEMPLATE_VERSION);
+    let mut readme = format!("# {}\n\nGenerated with EasyTF {}.\n\n## Configuration\n\nEdit each environment's `terraform.tfvars` to change resource values.\nReopen this project with `easytf --project .`; the TUI reads those values.\nEnvironment tags apply to managed resources; per-resource tag maps are overrides.\nAn empty resource tag map still inherits environment tags.\nThe sample/demo IDs are placeholders and must be replaced with real AWS IDs.\n\n", project.name, TEMPLATE_VERSION);
     readme.push_str("## Terraform commands\n\nRun commands from the selected environment directory. AWS credentials use your\nstandard profile/SSO/environment configuration; credentials are not generated.\n\n");
     for (name, env) in &project.environments {
         let init = if matches!(env.backend, Backend::S3 { .. }) {
@@ -101,7 +123,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>> {
         };
         readme.push_str(&format!("### {name}\n\n```sh\ncd environments/{name}\n{init}\nterraform validate\nterraform plan\nterraform output -json\n```\n\n"));
     }
-    readme.push_str("## Ownership and scope\n\nSubnet IDs and existing security group IDs use AWS data sources. They are read\nwithout adopting their infrastructure lifecycle. Security groups declared in\n`security_groups` and EC2 instances declared in `instances` are managed resources.\nModule outputs connect new resources and expose instance/network information.\n\nS3 backend buckets must already exist. Backend migration, arbitrary Terraform\nproject adoption, imports, and Terraform apply are outside this MVP.\nUse Ctrl+B on subnet, AMI, and existing SG fields for explicit read-only AWS discovery.\nThe SG/VPC precondition supports security groups in their primary VPC;\nadditional VPC associations are outside this MVP. Default root volumes are encrypted gp3; optional root disk/launch-template configuration can override storage.\nEC2 optional settings live under each instance configuration object in tfvars.\ninstance_role generates a profile for an existing role; iam_instance_profile references a profile directly.\nNew SGs have no ingress until rules are supplied; outbound IPv4 is explicit.\n\nEasyTF checks local HCL and input consistency. AWS existence, permissions,\nAMI compatibility, routing, and deployability require Terraform/AWS checks.\nEasyTF never executes Terraform apply or destroy.\n\nGenerated `.tf` files are protected against manual overwrites. Input `.tfvars`\nand backend values are read back; their formatting is canonicalized on generation.\nKeep `.easytf.toml` and `.terraform.lock.hcl` in version control.\nLocal conflict snapshots are ignored by Git. On a fresh clone, existing generated\nfiles must match this template before updates can be published.\n");
+    readme.push_str("## Ownership and scope\n\nSubnet IDs and existing security group IDs use AWS data sources. They are read\nwithout adopting their infrastructure lifecycle. Security groups declared in\n`security_groups` and EC2 instances declared in `instances` are managed resources.\nModule outputs connect new resources and expose instance/network information.\nALB/NLB target attachments depend on EC2 IDs/private IPs and target group ARNs.\nLB/TG creation can run in parallel with EC2; attachment keys stay known during plan.\n\nS3 backend buckets must already exist. Backend migration, arbitrary Terraform\nproject adoption, imports, and Terraform apply are outside this MVP.\nUse Ctrl+B on subnet, AMI, and existing SG fields for explicit read-only AWS discovery.\nThe SG/VPC precondition supports security groups in their primary VPC;\nadditional VPC associations are outside this MVP. Default root volumes are encrypted gp3; optional root disk/launch-template configuration can override storage.\nEC2 optional settings live under each instance configuration object in tfvars.\ninstance_role generates a profile for an existing role; iam_instance_profile references a profile directly.\nNew SGs have no ingress until rules are supplied; outbound IPv4 is explicit.\n\nEasyTF checks local HCL and input consistency. AWS existence, permissions,\nAMI compatibility, routing, and deployability require Terraform/AWS checks.\nEasyTF never executes Terraform apply or destroy.\n\nGenerated `.tf` files are protected against manual overwrites. Input `.tfvars`\nand backend values are read back; their formatting is canonicalized on generation.\nKeep `.easytf.toml` and `.terraform.lock.hcl` in version control.\nLocal conflict snapshots are ignored by Git. On a fresh clone, existing generated\nfiles must match this template before updates can be published.\n");
     files.insert("README.md".into(), readme);
     for (path, content) in &files {
         if path.ends_with(".tf") || path.ends_with(".tfvars") || path.ends_with(".tfbackend") {

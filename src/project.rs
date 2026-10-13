@@ -50,7 +50,7 @@ pub fn load(root: &Path) -> Result<Loaded> {
     if metadata.schema_version != SCHEMA_VERSION
         || !matches!(
             metadata.template_version.as_str(),
-            TEMPLATE_VERSION | "0.1.0"
+            TEMPLATE_VERSION | "0.1.0" | "0.2.0"
         )
     {
         bail!("Unsupported project schema/template version; automatic template migration is not supported");
@@ -338,7 +338,7 @@ fn managed_path(path: &str) -> bool {
     }
     let parts: Vec<_> = path.split('/').collect();
     match parts.as_slice() {
-        ["modules", "ec2" | "security-group", "main.tf" | "variables.tf" | "outputs.tf" | "versions.tf"] => {
+        ["modules", "ec2" | "security-group" | "load-balancer", "main.tf" | "variables.tf" | "outputs.tf" | "versions.tf"] => {
             true
         }
         ["environments", name, "main.tf"

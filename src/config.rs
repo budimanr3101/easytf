@@ -13,6 +13,10 @@ pub struct Node {
     #[serde(default)]
     pub label: String,
     #[serde(default)]
+    pub choices: Vec<String>,
+    #[serde(default)]
+    pub default_value: Option<Value>,
+    #[serde(default)]
     pub properties: BTreeMap<String, Node>,
     #[serde(default)]
     pub element: Option<Box<Node>>,
@@ -26,6 +30,8 @@ impl Node {
             required,
             help: help.into(),
             label: String::new(),
+            choices: Vec::new(),
+            default_value: None,
             properties: BTreeMap::new(),
             element: None,
             max_items: None,
@@ -38,6 +44,9 @@ impl Node {
         }
     }
     pub fn empty(&self) -> Value {
+        if let Some(value) = &self.default_value {
+            return value.clone();
+        }
         match self.kind.as_str() {
             "object"
                 if self.properties.contains_key("protocol")
@@ -68,7 +77,16 @@ impl Node {
             return Ok(());
         }
         match self.kind.as_str() {
-            "string" if value.is_string() => {}
+            "string" | "choice" if value.is_string() => {
+                if !self.choices.is_empty()
+                    && !self
+                        .choices
+                        .iter()
+                        .any(|choice| Some(choice.as_str()) == value.as_str())
+                {
+                    bail!("{path}: choose one of {}", self.choices.join(", "));
+                }
+            }
             "number" if value.is_number() => {}
             "bool" if value.is_boolean() => {}
             "object" => {

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const SCHEMA_VERSION: u32 = 1;
-pub const TEMPLATE_VERSION: &str = "0.2.0";
+pub const TEMPLATE_VERSION: &str = "0.3.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -46,6 +46,8 @@ pub struct Values {
     pub instances: BTreeMap<String, Instance>,
     #[serde(default)]
     pub security_groups: BTreeMap<String, SecurityGroup>,
+    #[serde(default)]
+    pub load_balancers: BTreeMap<String, crate::lb::LoadBalancer>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -120,6 +122,7 @@ impl Default for Values {
             tags: BTreeMap::new(),
             instances: BTreeMap::new(),
             security_groups: BTreeMap::new(),
+            load_balancers: BTreeMap::new(),
         }
     }
 }
@@ -135,9 +138,14 @@ impl Default for Environment {
 
 impl Project {
     pub fn empty(name: &str) -> Self {
+        let mut env = Environment::default();
+        env.values.tags = BTreeMap::from([
+            ("env".into(), "dev".into()),
+            ("project".into(), name.into()),
+        ]);
         Self {
             name: name.into(),
-            environments: BTreeMap::from([("dev".into(), Environment::default())]),
+            environments: BTreeMap::from([("dev".into(), env)]),
         }
     }
 
@@ -151,8 +159,8 @@ impl Project {
             let mut env = Environment::default();
             env.values
                 .tags
-                .insert("Project".into(), project.name.clone());
-            env.values.tags.insert("Environment".into(), name.into());
+                .insert("project".into(), project.name.clone());
+            env.values.tags.insert("env".into(), name.into());
             env.values.instances.insert(
                 "web_primary".into(),
                 Instance {
@@ -213,6 +221,11 @@ impl Project {
                     rule.validate()
                         .map_err(|e| anyhow::anyhow!("{name}/{key}/{rule_key}: {e}"))?;
                 }
+            }
+            for (key, lb) in &env.values.load_balancers {
+                validate_key(key, "Load balancer key")?;
+                lb.validate(&env.values)
+                    .map_err(|error| anyhow::anyhow!("{name}/{key}: {error}"))?;
             }
             for (key, instance) in &env.values.instances {
                 validate_key(key, "Instance key")?;

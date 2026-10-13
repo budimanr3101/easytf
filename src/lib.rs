@@ -7,3 +7,5 @@ pub mod discovery;
 
 pub mod config;
 pub mod structured;
+
+pub mod lb;

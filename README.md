@@ -15,7 +15,23 @@ The wizard covers project location, environments, local or existing S3 state sto
 
 ## Keyboard
 
-Use arrows and Tab to navigate; Enter opens an item. Ctrl+N continues, `r` reviews, `p` switches preview, Ctrl+S saves a form or working draft, and Esc goes back. In forms, Tab or Enter advances to the visible Save & continue / Save & stay / Cancel actions; use Left/Right to choose an action and Enter to activate it. Ctrl+N saves and continues immediately. F2/F3 remain optional aliases. In Resources, `a` adds EC2, `s` adds a security group, and `d` requests deletion. In Review, `g` generates after confirmation. `?` opens contextual help. On a narrow terminal, `p` opens full-width previews.
+Use arrows and Tab to navigate; Enter opens an item. Ctrl+N continues, `r` reviews, `p` switches preview, Ctrl+S saves a form or working draft, and Esc goes back. In forms, Tab or Enter advances to the visible Save & continue / Save & stay / Cancel actions; use Left/Right to choose an action and Enter to activate it. Ctrl+N saves and continues immediately. F2/F3 remain optional aliases. In Resources, `a` adds EC2, `s` adds a security group, `l` adds ALB, `b` adds NLB, and `d` requests deletion. In Review, `g` generates after confirmation. `?` opens contextual help. On a narrow terminal, `p` opens full-width previews.
+
+## Environment tags and overrides
+
+New projects start with environment-level `env` and `project` tags. Set **Environment tags · all managed resources** from environment settings (`e` in Resources). The generated provider also uses `default_tags`, and module inputs explicitly merge environment tags with resource overrides. The resource form shows inherited tags as read-only and labels its own tags as overrides. An empty resource tag map means no overrides, not no effective tags. Existing projects retain their chosen tags; EasyTF does not silently replace them.
+
+## ALB and NLB
+
+In Resources, `l` adds an ALB and `b` adds an NLB. Configure subnet IDs, existing/project security groups, frontend listeners, target groups, backend ports, and health checks. Open **Target groups & EC2 targets**, edit a group, then add project EC2 keys from the selection list. Terraform resolves the instance ID (or private IP for IP targets) automatically. No manual copying of Terraform outputs is required.
+
+ALB requires at least two subnets in different AZs and one SG. NLB requires at least one subnet; SGs are optional. Subnets, SGs, and managed EC2 targets must use the same VPC. Existing instance targets use data sources; existing IP targets must be IPv4 addresses. Network routing, SG traffic rules, and the application's health endpoint still require appropriate configuration.
+
+Multiple listeners forward to named target groups. HTTPS/TLS uses an existing certificate ARN. ALB supports HTTP/HTTPS; NLB supports TCP/TLS/UDP/TCP_UDP in this release. HTTP(S) health checks use path/matcher; TCP checks leave them unset. Advanced host/path listener rules, weighted actions, certificate provisioning, access logs, and additional LB options are future extensions.
+
+Attachments reference both target group ARNs and EC2 module outputs, so Terraform creates the dependencies automatically. LB/TG/listener creation can run in parallel with EC2. Attachment keys are built from target group and project EC2 keys, so unknown IDs during plan do not break `for_each`. Deleting an EC2 or SG that a load balancer references is blocked until its links are removed.
+
+Outputs include LB ARN, DNS name, zone ID, listener/TG ARNs, registered target IDs, and effective LB tags. See `examples/ec2-alb-nlb.json` for a linked EC2 + ALB + NLB example with placeholder AWS IDs. Tests under `tests/terraform/load-balancer.tftest.hcl` use a mock provider; they never create AWS resources.
 
 ## EC2 sections and collection editors
 
@@ -85,6 +101,7 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 python3 tests/tui_smoke.py
 python3 tests/tui_collections_smoke.py
+python3 tests/tui_lb_smoke.py
 ```
 
 Terraform requires version 1.10 or newer, below 2.0. The generated AWS provider requirement is `>= 6.68.0, < 7.0`.

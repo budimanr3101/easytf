@@ -42,6 +42,7 @@ impl Stage {
 enum ResourceRow {
     Instance(String),
     SecurityGroup(String),
+    LoadBalancer(String),
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,7 @@ enum EditKind {
     Backend,
     Instance(Option<String>),
     SecurityGroup(Option<String>),
+    LoadBalancer(Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -463,6 +465,12 @@ impl App {
                             .keys()
                             .map(|k| ResourceRow::SecurityGroup(k.clone())),
                     )
+                    .chain(
+                        env.values
+                            .load_balancers
+                            .keys()
+                            .map(|key| ResourceRow::LoadBalancer(key.clone())),
+                    )
                     .collect()
             })
             .unwrap_or_default()
@@ -580,6 +588,21 @@ impl App {
             if editor.action.is_none() && key.code == KeyCode::Enter {
                 let field = &editor.fields[editor.selected];
                 if let FieldKind::Structured(node) = &field.kind {
+                    let mut node = node.clone();
+                    if field.name == "listeners" {
+                        if let Some(element) = &mut node.element {
+                            if let Some(target) = element.properties.get_mut("target_group_key") {
+                                target.choices = serde_json::from_str::<serde_json::Value>(
+                                    editor.get("target_groups"),
+                                )
+                                .ok()
+                                .and_then(|v| {
+                                    v.as_object().map(|values| values.keys().cloned().collect())
+                                })
+                                .unwrap_or_default();
+                            }
+                        }
+                    }
                     self.structured = Some(crate::structured::Structured::new(
                         field.name,
                         field.label,
@@ -828,9 +851,14 @@ impl App {
                 }
                 KeyCode::Char('a') => self.edit_instance(None),
                 KeyCode::Char('s') => self.edit_security_group(None),
+                KeyCode::Char('l') => self.edit_load_balancer(None, false),
+                KeyCode::Char('b') => self.edit_load_balancer(None, true),
                 KeyCode::Enter => match self.rows().get(self.selected).cloned() {
                     Some(ResourceRow::Instance(key)) => self.edit_instance(Some(key)),
                     Some(ResourceRow::SecurityGroup(key)) => self.edit_security_group(Some(key)),
+                    Some(ResourceRow::LoadBalancer(key)) => {
+                        self.edit_load_balancer(Some(key), false)
+                    }
                     None => self.edit_instance(None),
                 },
                 KeyCode::Delete | KeyCode::Char('d') => {
@@ -1173,11 +1201,11 @@ impl App {
             let mut env = self.inactive.remove(&name).unwrap_or_default();
             env.values
                 .tags
-                .entry("Project".into())
+                .entry("project".into())
                 .or_insert_with(|| self.project.name.clone());
             env.values
                 .tags
-                .entry("Environment".into())
+                .entry("env".into())
                 .or_insert_with(|| name.clone());
             self.project.environments.insert(name, env);
         }
@@ -1229,7 +1257,7 @@ impl App {
                 ),
                 Field::structured(
                     "tags",
-                    "Default tags",
+                    "Environment tags · all managed resources",
                     "Add key-value tags applied to all generated resources",
                     crate::config::Node::map(
                         crate::config::Node::scalar(
@@ -1428,7 +1456,7 @@ impl App {
                 ),
                 Field::structured(
                     "tags",
-                    "Instance tags",
+                    "Instance tag overrides",
                     "Merged with default tags; Name is set from AWS Name tag",
                     crate::config::Node::map(
                         crate::config::Node::scalar(
@@ -1466,6 +1494,7 @@ impl App {
             values.insert((*name).into(), serde_json::Value::Object(value));
         }
         self.editor.as_mut().unwrap().fields.push(Field::structured("configuration_sections", "Optional EC2 configuration · 6 sections", "Enter opens Identity, Storage, Networking, Security, Placement, and Launch sections. Ctrl+G opens this menu from any field.", node, serde_json::Value::Object(values)));
+        self.add_inherited_tags();
     }
 
     fn edit_security_group(&mut self, key: Option<String>) {
@@ -1529,7 +1558,7 @@ impl App {
                 ),
                 Field::structured(
                     "tags",
-                    "SG tags",
+                    "SG tag overrides",
                     "Resource-specific tags",
                     crate::config::Node::map(
                         crate::config::Node::scalar(
@@ -1544,6 +1573,102 @@ impl App {
                 ),
             ],
         ));
+        self.add_inherited_tags();
+    }
+
+    fn add_inherited_tags(&mut self) {
+        let env = &self.project.environments[&self.env_name()];
+        let value = if env.values.tags.is_empty() {
+            "None · set Environment tags to tag all managed resources".into()
+        } else {
+            env.values
+                .tags
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(" · ")
+        };
+        let mut field = Field::text("inherited_tags", "Inherited environment tags", "These apply automatically to all managed resources. Resource tags below add or override values. Existing referenced resources are not changed.", value);
+        field.locked = true;
+        if let Some(editor) = &mut self.editor {
+            if let Some(index) = editor.fields.iter().position(|field| field.name == "tags") {
+                editor.fields.insert(index, field);
+            }
+        }
+    }
+
+    fn edit_load_balancer(&mut self, key: Option<String>, network: bool) {
+        let env = &self.project.environments[&self.env_name()];
+        let default_key = next_key(
+            if network { "nlb" } else { "alb" },
+            env.values.load_balancers.keys().map(String::as_str),
+        );
+        let settings = key
+            .as_ref()
+            .and_then(|key| env.values.load_balancers.get(key))
+            .cloned()
+            .unwrap_or_else(|| {
+                crate::lb::LoadBalancer::new(
+                    format!(
+                        "etf-{}-{}-{}",
+                        self.project
+                            .name
+                            .replace('_', "-")
+                            .chars()
+                            .take(10)
+                            .collect::<String>(),
+                        default_key
+                            .replace('_', "-")
+                            .chars()
+                            .take(8)
+                            .collect::<String>(),
+                        self.env_name()
+                            .replace('_', "-")
+                            .chars()
+                            .take(6)
+                            .collect::<String>()
+                    )
+                    .trim_end_matches('-')
+                    .into(),
+                    network,
+                )
+            });
+        let network = settings.load_balancer_type == "network";
+        let mut identity = Field::text(
+            "key",
+            "Resource key",
+            "Stable Terraform identity. Existing keys cannot be renamed.",
+            key.clone().unwrap_or(default_key),
+        );
+        identity.locked = key.is_some();
+        let mut kind = Field::text(
+            "kind",
+            "Load balancer type",
+            "ALB application or NLB network. Create a new resource to change type.",
+            settings.load_balancer_type.clone(),
+        );
+        kind.locked = true;
+        let mut linked=crate::config::Node::scalar("list",false,"Select managed SG keys from this environment. ALB requires an SG; NLB SGs are optional.");
+        let mut item = crate::config::Node::scalar(
+            "string",
+            true,
+            "Choose an existing project security group key.",
+        );
+        item.choices = env.values.security_groups.keys().cloned().collect();
+        linked.element = Some(Box::new(item));
+        self.editor=Some(Editor::new(if network {"NLB · listeners & target groups"} else {"ALB · listeners & target groups"},EditKind::LoadBalancer(key),vec![
+            identity,kind,
+            Field::text("name","AWS name","Letters/numbers/hyphens, max 32 characters.",settings.name),
+            Field::text("subnets","Existing subnet IDs","Comma-separated IDs. ALB: two or more distinct AZs. NLB: one or more. Same VPC.",settings.subnet_ids.join(", ")),
+            Field::toggle("internal","Internal load balancer","Internal/private or internet-facing. Routing and subnet connectivity remain your responsibility.",settings.internal),
+            Field::text("lb_existing_sg_ids","Existing SG IDs (optional)","Comma-separated existing SG IDs in the LB VPC.",settings.existing_security_group_ids.join(", ")),
+            Field::structured("linked_sgs","Project SG keys", "Select SGs created in this project; their IDs resolve automatically.",linked,serde_json::to_value(settings.security_group_keys).unwrap()),
+            Field::structured("target_groups","Target groups & EC2 targets","Add groups, select EC2 keys, set backend ports and health checks. IDs resolve through Terraform outputs.",crate::lb::target_schema(env.values.instances.keys().cloned().collect(),network),serde_json::to_value(settings.target_groups).unwrap()),
+            Field::structured("listeners","Frontend listeners","Each listener forwards to a named target group. HTTPS/TLS needs an existing certificate ARN.",crate::lb::listener_schema(network),serde_json::to_value(settings.listeners).unwrap()),
+            Field::toggle("deletion_protection","Deletion protection","Disable explicitly before Terraform can destroy the LB.",settings.deletion_protection),
+            Field::structured("tags","LB tag overrides","Environment tags apply automatically; these are overrides.",crate::config::Node::map(crate::config::Node::scalar("string",true,"Tag value"),"Resource-specific overrides"),serde_json::to_value(settings.tags).unwrap())
+        ]));
+        self.add_inherited_tags();
     }
 
     fn commit_editor(&mut self, advance: bool) {
@@ -1579,7 +1704,15 @@ impl App {
                 if editor.get("path").trim().is_empty() {
                     bail!("Output folder is required");
                 }
+                let old_name = candidate.name.clone();
                 candidate.name = editor.get("name").into();
+                for env in candidate.environments.values_mut() {
+                    if env.values.tags.get("project") == Some(&old_name) {
+                        env.values
+                            .tags
+                            .insert("project".into(), candidate.name.clone());
+                    }
+                }
                 output = expand_path(editor.get("path"))?;
             }
             EditKind::Open => {
@@ -1626,8 +1759,8 @@ impl App {
                 let mut env = Environment::default();
                 env.values
                     .tags
-                    .insert("Project".into(), candidate.name.clone());
-                env.values.tags.insert("Environment".into(), name.into());
+                    .insert("project".into(), candidate.name.clone());
+                env.values.tags.insert("env".into(), name.into());
                 candidate.environments.insert(name.into(), env);
                 if !self.environment_options.iter().any(|n| n == name) {
                     self.environment_options.push(name.into());
@@ -1758,6 +1891,30 @@ impl App {
                 }
                 env.values.instances.insert(key.into(), instance);
             }
+            EditKind::LoadBalancer(original) => {
+                let env_name = self.env_name();
+                let env = candidate.environments.get_mut(&env_name).unwrap();
+                let key = editor.get("key");
+                model::validate_key(key, "Load balancer key")?;
+                if original.is_none() && env.values.load_balancers.contains_key(key) {
+                    bail!("Load balancer key already exists");
+                }
+                env.values.load_balancers.insert(
+                    key.into(),
+                    crate::lb::LoadBalancer {
+                        name: editor.get("name").into(),
+                        load_balancer_type: editor.get("kind").into(),
+                        internal: editor.get("internal") == "true",
+                        subnet_ids: comma_list(editor.get("subnets")),
+                        existing_security_group_ids: comma_list(editor.get("lb_existing_sg_ids")),
+                        security_group_keys: serde_json::from_str(editor.get("linked_sgs"))?,
+                        deletion_protection: editor.get("deletion_protection") == "true",
+                        tags: serde_json::from_str(editor.get("tags"))?,
+                        target_groups: serde_json::from_str(editor.get("target_groups"))?,
+                        listeners: serde_json::from_str(editor.get("listeners"))?,
+                    },
+                );
+            }
             EditKind::SecurityGroup(original) => {
                 let env_name = self.env_name();
                 let env = candidate.environments.get_mut(&env_name).unwrap();
@@ -1858,9 +2015,29 @@ impl App {
                 let env = self.project.environments.get_mut(&env_name).unwrap();
                 match row {
                     ResourceRow::Instance(key) => {
+                        let users: Vec<_> = env
+                            .values
+                            .load_balancers
+                            .iter()
+                            .filter(|(_, lb)| {
+                                lb.target_groups
+                                    .values()
+                                    .any(|group| group.instance_keys.contains(&key))
+                            })
+                            .map(|(key, _)| key.clone())
+                            .collect();
+                        if !users.is_empty() {
+                            self.status(format!("Cannot remove EC2 '{key}': targeted by load balancers {}. Edit their target groups first.",users.join(", ")),true);
+                            return;
+                        }
                         env.values.instances.remove(&key);
                         self.dirty = true;
                         self.status("Instance definition removed from draft. Review its Terraform plan before applying.", false);
+                    }
+                    ResourceRow::LoadBalancer(key) => {
+                        env.values.load_balancers.remove(&key);
+                        self.dirty = true;
+                        self.status("Load balancer removed from draft. Review Terraform plan before applying.",false);
                     }
                     ResourceRow::SecurityGroup(key) => {
                         let users: Vec<_> = env
@@ -1869,6 +2046,13 @@ impl App {
                             .iter()
                             .filter(|(_, i)| i.security_group_keys.contains(&key))
                             .map(|(k, _)| k.clone())
+                            .chain(
+                                env.values
+                                    .load_balancers
+                                    .iter()
+                                    .filter(|(_, lb)| lb.security_group_keys.contains(&key))
+                                    .map(|(key, _)| format!("LB {key}")),
+                            )
                             .collect();
                         if !users.is_empty() {
                             self.status(
@@ -2030,7 +2214,7 @@ impl App {
             match self.stage {
                 Stage::Welcome => "↑↓ Select   Enter Open   ? Help   q Quit",
                 Stage::Environments => "Space Select   Enter Settings   a Add   Ctrl+N Continue   Esc Back   ? Help",
-                Stage::Resources => "a Add EC2   s Add SG   Enter Edit   d Remove   [/] Env   r Review   p Preview   ? Help",
+                Stage::Resources => "a EC2   s SG   l ALB   b NLB   Enter Edit   d Remove   [/] Env   r Review   p Preview   ? Help",
                 Stage::Review => "↑↓ File   Enter Diff   PgUp/PgDn Scroll   g Generate files   Esc Back   ? Help",
                 Stage::Done => "Enter Return to workspace   q Quit",
                 _ => "Enter Edit   Ctrl+N Continue   Esc Back   ? Help",
@@ -2289,6 +2473,27 @@ impl App {
                         Line::from(""),
                     ])
                 }
+                ResourceRow::LoadBalancer(key) => {
+                    let lb = &env.values.load_balancers[key];
+                    ListItem::new(vec![
+                        Line::from(format!(
+                            " {} {}",
+                            if lb.load_balancer_type == "application" {
+                                "ALB"
+                            } else {
+                                "NLB"
+                            },
+                            key
+                        )),
+                        Line::from(format!(
+                            "     {} · {} listener(s), {} target group(s)",
+                            lb.name,
+                            lb.listeners.len(),
+                            lb.target_groups.len()
+                        )),
+                        Line::from(""),
+                    ])
+                }
                 ResourceRow::SecurityGroup(key) => {
                     let sg = &env.values.security_groups[key];
                     let users = env
@@ -2322,7 +2527,7 @@ impl App {
         let mut state = ListState::default().with_selected(Some(self.selected.min(rows.len() - 1)));
         frame.render_stateful_widget(
             List::new(items)
-                .block(self.block(" Resources · a: EC2 / s: SG ", true))
+                .block(self.block(" Resources · a EC2 / s SG / l ALB / b NLB ", true))
                 .highlight_symbol(" > ")
                 .highlight_style(
                     Style::default()
@@ -2607,6 +2812,38 @@ impl App {
                         }
                         lines.push(Line::from(""));
                     }
+                    for (key, lb) in &env.values.load_balancers {
+                        lines.push(Line::from(format!(
+                            "{} · {key}",
+                            if lb.load_balancer_type == "application" {
+                                "ALB"
+                            } else {
+                                "NLB"
+                            }
+                        )));
+                        for (listener_key, listener) in &lb.listeners {
+                            lines.push(Line::from(format!(
+                                "  {listener_key} {}:{} → TG {}",
+                                listener.protocol, listener.port, listener.target_group_key
+                            )));
+                        }
+                        for (group_key, group) in &lb.target_groups {
+                            lines.push(Line::from(format!(
+                                "  TG {group_key} {}:{} · health {}",
+                                group.protocol, group.port, group.health_check.protocol
+                            )));
+                            for instance in &group.instance_keys {
+                                lines.push(Line::from(format!(
+                                    "    ← EC2 {instance} [ID/IP resolves after creation]"
+                                )));
+                            }
+                            for target in &group.existing_target_ids {
+                                lines.push(Line::from(format!("    ← {target} [existing target]")));
+                            }
+                        }
+                        lines.push(Line::from(""));
+                    }
+                    lines.push(Line::from("Attachments wait for EC2 IDs and TG ARNs. LB creation can run in parallel."));
                     lines.push(Line::from(
                         "Existing resources are referenced through data sources.",
                     ));
@@ -2627,6 +2864,11 @@ impl App {
                         lines.push(Line::from("  subnet_id / security_group_ids"));
                         lines.push(Line::from("  [Known after apply]"));
                         lines.push(Line::from(""));
+                    }
+                    for key in env.values.load_balancers.keys() {
+                        lines.push(Line::from(format!(
+                            "load_balancers.{key} → ARN / DNS / zone / TGs / listeners / targets"
+                        )));
                     }
                     lines.push(Line::from("existing_subnets → VPC / availability zone"));
                     lines.push(Line::from("security_groups → ID / primary VPC"));
@@ -2711,11 +2953,11 @@ Use the visible Save & continue, Save & stay, or Cancel buttons.
 AWS browsing uses the active environment's profile and region.
 
 Enter / Esc closes this help.".into()),
-            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nr / Ctrl+N   Review files\np            Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nEnter        Next field; activate action buttons
+            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nl            Add ALB\nb            Add NLB\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nr / Ctrl+N   Review files\np            Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nEnter        Next field; activate action buttons
 Ctrl+N       Save form and continue
 F1           Help\nEsc          Discard unsaved form changes\n\nText fields accept letters such as q, s, and g normally.\nEnter / Esc closes this help.".into()),
             Modal::Generate => (" Generate files ", format!("Write Terraform configuration to:\n\n{}\n\n{} environment(s) · {} changed file(s)\n\nExisting subnet and SG IDs remain references.\nManual edits and stale file changes block publishing.\nNo Terraform apply or destroy is executed.\n\nEnter / y Generate files     Esc / n Cancel", self.output.display(), self.project.environments.len(), self.review_files.iter().filter(|f| f.action != "unchanged").count())),
-            Modal::Remove(row) => (" Remove resource definition ", format!("Remove {} from the draft?\n\nA later Terraform apply may destroy the managed resource.\nReferenced shared security groups remain in the draft.\n\nEnter / y Remove definition     Esc / n Cancel", match row { ResourceRow::Instance(k) => format!("EC2 '{k}'"), ResourceRow::SecurityGroup(k) => format!("SG '{k}'") })),
+            Modal::Remove(row) => (" Remove resource definition ", format!("Remove {} from the draft?\n\nA later Terraform apply may destroy the managed resource.\nReferenced shared security groups remain in the draft.\n\nEnter / y Remove definition     Esc / n Cancel", match row { ResourceRow::Instance(k) => format!("EC2 '{k}'"), ResourceRow::SecurityGroup(k) => format!("SG '{k}'"), ResourceRow::LoadBalancer(k) => format!("LB '{k}'") })),
             Modal::Quit => (" Exit EasyTF ", if self.dirty { "Save the working draft locally and exit?\n\nNo Terraform files will be written.\n\nEnter / y Save draft and exit     Esc / n Stay".into() }
                 else { "Exit EasyTF?\n\nEnter / y Exit     Esc / n Stay".into() }),
         };
@@ -3095,5 +3337,37 @@ mod tests {
             app.project.environments["dev"].values.instances["web_primary"].tags["Owner"],
             "Platform"
         );
+    }
+    #[test]
+    fn lb_target_dependencies_block_instance_deletion_and_forms_show_inherited_tags() {
+        let project: Project =
+            serde_json::from_str(include_str!("../examples/ec2-alb-nlb.json")).unwrap();
+        let mut app = App::new(project, PathBuf::from("demo"), None, true, true);
+        app.modal = Some(Modal::Remove(ResourceRow::Instance("web_primary".into())));
+        app.handle(key(KeyCode::Enter));
+        assert!(app.error);
+        assert!(app.project.environments["dev"]
+            .values
+            .instances
+            .contains_key("web_primary"));
+        app.edit_load_balancer(Some("frontend_alb".into()), false);
+        let editor = app.editor.as_ref().unwrap();
+        let sg_index = editor
+            .fields
+            .iter()
+            .position(|field| field.name == "lb_existing_sg_ids")
+            .unwrap();
+        assert!(editor.visible().contains(&sg_index));
+        let inherited = app
+            .editor
+            .as_ref()
+            .unwrap()
+            .fields
+            .iter()
+            .find(|field| field.name == "inherited_tags")
+            .unwrap();
+        assert!(inherited.locked);
+        assert!(inherited.value.contains("env=dev"));
+        assert!(inherited.value.contains("project=payment-service"));
     }
 }

@@ -13,6 +13,7 @@ resource "aws_vpc_security_group_ingress_rule" "this" {
   to_port           = each.value.to_port
   cidr_ipv4         = each.value.cidr_ipv4
   description       = each.value.description
+  tags              = var.tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "this" {
@@ -23,4 +24,5 @@ resource "aws_vpc_security_group_egress_rule" "this" {
   to_port           = each.value.to_port
   cidr_ipv4         = each.value.cidr_ipv4
   description       = each.value.description
+  tags              = var.tags
 }

@@ -13,6 +13,9 @@
 - Multi-rule ingress/egress and structured tag editing.
 - Six optional EC2 sections, IAM role/profile and key pair support, multi-EBS, metadata/CPU/launch/network blocks.
 
+- Explicit environment tag scope, automatic env/project defaults for new projects, and read-only inherited tags in resource forms.
+- ALB/NLB with listeners, target groups, health checks, EC2-output attachments, existing targets, and dependency guards.
+
 ## Next
 
 1. Terraform command integration: fmt, init, validate, plan, streaming logs and cancellation.
@@ -21,7 +24,7 @@
 4. Per-project drafts and recovery of unfinished forms.
 5. Copy resources between environments with controlled overrides.
 6. Explicit backend migration workflow.
-7. Additional resource generators (networking, ALB, RDS).
+7. Additional resource generators (networking, RDS) and advanced LB listener rules/options.
 8. Existing manual Terraform project adoption/import.
 9. GitHub remote, CI, packaging, and macOS/Linux releases.
 

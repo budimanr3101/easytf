@@ -1,0 +1,126 @@
+{
+  "name": "payment-service",
+  "environments": {
+    "dev": {
+      "backend": {
+        "type": "local"
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "env": "dev",
+          "project": "payment-service"
+        },
+        "instances": {
+          "web_primary": {
+            "name": "payment-web-dev",
+            "ami_id": "ami-0123456789abcdef0",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [],
+            "root_volume_gib": 20,
+            "associate_public_ip": false,
+            "tags": {}
+          }
+        },
+        "security_groups": {},
+        "load_balancers": {
+          "frontend_alb": {
+            "name": "payment-dev-alb",
+            "load_balancer_type": "application",
+            "internal": false,
+            "subnet_ids": [
+              "subnet-0123456789abcdef0",
+              "subnet-11111111111111111"
+            ],
+            "existing_security_group_ids": [
+              "sg-0123456789abcdef0"
+            ],
+            "security_group_keys": [],
+            "deletion_protection": false,
+            "tags": {},
+            "target_groups": {
+              "web": {
+                "port": 80,
+                "protocol": "HTTP",
+                "target_type": "instance",
+                "instance_keys": [
+                  "web_primary"
+                ],
+                "existing_target_ids": [],
+                "health_check": {
+                  "protocol": "HTTP",
+                  "port": "traffic-port",
+                  "path": "/",
+                  "matcher": "200",
+                  "interval": 30,
+                  "timeout": 5,
+                  "healthy_threshold": 3,
+                  "unhealthy_threshold": 3
+                },
+                "tags": {}
+              }
+            },
+            "listeners": {
+              "frontend": {
+                "port": 80,
+                "protocol": "HTTP",
+                "target_group_key": "web",
+                "certificate_arn": null,
+                "ssl_policy": null
+              }
+            }
+          },
+          "frontend_nlb": {
+            "name": "payment-dev-nlb",
+            "load_balancer_type": "network",
+            "internal": false,
+            "subnet_ids": [
+              "subnet-0123456789abcdef0",
+              "subnet-11111111111111111"
+            ],
+            "existing_security_group_ids": [],
+            "security_group_keys": [],
+            "deletion_protection": false,
+            "tags": {},
+            "target_groups": {
+              "web": {
+                "port": 80,
+                "protocol": "TCP",
+                "target_type": "instance",
+                "instance_keys": [
+                  "web_primary"
+                ],
+                "existing_target_ids": [],
+                "health_check": {
+                  "protocol": "TCP",
+                  "port": "traffic-port",
+                  "path": null,
+                  "matcher": null,
+                  "interval": 30,
+                  "timeout": 5,
+                  "healthy_threshold": 3,
+                  "unhealthy_threshold": 3
+                },
+                "tags": {}
+              }
+            },
+            "listeners": {
+              "frontend": {
+                "port": 80,
+                "protocol": "TCP",
+                "target_group_key": "web",
+                "certificate_arn": null,
+                "ssl_policy": null
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ enum Slot {
     Add,
     Done,
     Cancel,
+    Choice(String),
 }
 #[derive(Clone)]
 struct Page {
@@ -67,6 +68,16 @@ impl Structured {
         let page = self.pages.last().unwrap();
         let mut rows = Vec::new();
         match page.node.kind.as_str() {
+            "choice" => {
+                for choice in &page.node.choices {
+                    rows.push((
+                        Slot::Choice(choice.clone()),
+                        choice.clone(),
+                        Node::scalar("string", true, "Select a project resource."),
+                        Value::String(choice.clone()),
+                    ));
+                }
+            }
             "object" => {
                 for (name, node) in &page.node.properties {
                     rows.push((
@@ -120,6 +131,24 @@ impl Structured {
                     "security",
                     "placement",
                     "launch",
+                ]
+            } else if page.node.properties.contains_key("instance_keys") {
+                &[
+                    "protocol",
+                    "port",
+                    "target_type",
+                    "instance_keys",
+                    "existing_target_ids",
+                    "health_check",
+                    "tags",
+                ]
+            } else if page.node.properties.contains_key("target_group_key") {
+                &[
+                    "port",
+                    "protocol",
+                    "target_group_key",
+                    "certificate_arn",
+                    "ssl_policy",
                 ]
             } else if page.node.properties.contains_key("protocol") {
                 &[
@@ -198,6 +227,19 @@ impl Structured {
         }
     }
     fn edit(&mut self, slot: Slot, title: String, node: Node, value: Value) {
+        if node.kind == "string" && !node.choices.is_empty() {
+            let mut node = node;
+            node.kind = "choice".into();
+            self.pages.push(Page {
+                title,
+                node,
+                value,
+                slot: Some(slot),
+                selected: 0,
+                new_entry: false,
+            });
+            return;
+        }
         match node.kind.as_str() {
             "object" | "list" | "map" => self.pages.push(Page {
                 title,
@@ -438,6 +480,10 @@ impl Structured {
             KeyCode::Enter => {
                 let (slot, title, node, value) = rows[page.selected].clone();
                 match slot {
+                    Slot::Choice(choice) => {
+                        self.pages.last_mut().unwrap().value = Value::String(choice);
+                        return self.done();
+                    }
                     Slot::Add => self.add(),
                     Slot::Done => return self.done(),
                     Slot::Cancel => {
@@ -482,6 +528,19 @@ impl Structured {
         let page = self.pages.pop().unwrap();
         if let Some(parent) = self.pages.last_mut() {
             Self::put(parent, &page.slot.unwrap(), page.value);
+            if parent.node.properties.contains_key("healthy_threshold") {
+                if parent.value["protocol"] == "TCP" {
+                    parent.value["path"] = Value::Null;
+                    parent.value["matcher"] = Value::Null;
+                } else {
+                    if parent.value["path"].is_null() {
+                        parent.value["path"] = "/".into();
+                    }
+                    if parent.value["matcher"].is_null() {
+                        parent.value["matcher"] = "200".into();
+                    }
+                }
+            }
             self.message = "Section kept. Done on the parent page keeps it in the form.".into();
             None
         } else {
@@ -603,7 +662,10 @@ impl Structured {
             let items = rows
                 .iter()
                 .map(|(slot, name, node, value)| {
-                    let text = if matches!(slot, Slot::Add | Slot::Done | Slot::Cancel) {
+                    let text = if matches!(
+                        slot,
+                        Slot::Add | Slot::Done | Slot::Cancel | Slot::Choice(_)
+                    ) {
                         name.clone()
                     } else {
                         format!(
@@ -712,6 +774,23 @@ mod tests {
             .unwrap();
         editor.pages.last_mut().unwrap().selected = index;
     }
+    #[test]
+    fn project_resource_choices_are_selected_without_typing_ids() {
+        let mut item = Node::scalar("string", true, "Choose a project EC2 key");
+        item.choices = vec!["web_primary".into()];
+        let mut node = Node::scalar("list", false, "Targets");
+        node.element = Some(Box::new(item));
+        let mut editor =
+            Structured::new("instance_keys", "EC2 targets", node, serde_json::json!([]));
+        editor.handle(key(KeyCode::Char('a')));
+        assert!(editor.input.is_none());
+        editor.handle(key(KeyCode::Enter));
+        let Some(Outcome::Saved(value)) = editor.handle(done()) else {
+            panic!("choices not saved")
+        };
+        assert_eq!(value, serde_json::json!(["web_primary"]));
+    }
+
     #[test]
     fn creates_multiple_named_rules_without_leaving_the_parent_editor() {
         let mut editor = Structured::new(

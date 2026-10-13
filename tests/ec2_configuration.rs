@@ -95,7 +95,7 @@ fn old_template_metadata_can_upgrade_without_losing_resource_identity() {
     let metadata = temp.path().join(".easytf.toml");
     let old = fs::read_to_string(&metadata)
         .unwrap()
-        .replace("0.2.0", "0.1.0");
+        .replace(easytf::model::TEMPLATE_VERSION, "0.1.0");
     fs::write(&metadata, &old).unwrap();
     let snapshot_path = temp.path().join(".easytf/last-generated.json");
     let mut snapshot: serde_json::Value =
@@ -105,7 +105,9 @@ fn old_template_metadata_can_upgrade_without_losing_resource_identity() {
     let loaded = project::load(temp.path()).unwrap();
     assert_eq!(loaded.project, model);
     project::publish(temp.path(), &loaded.project, Some(&loaded)).unwrap();
-    assert!(fs::read_to_string(metadata).unwrap().contains("0.2.0"));
+    assert!(fs::read_to_string(metadata)
+        .unwrap()
+        .contains(easytf::model::TEMPLATE_VERSION));
     assert!(
         project::load(temp.path()).unwrap().project.environments["dev"]
             .values
