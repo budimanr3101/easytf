@@ -15,7 +15,7 @@ The wizard covers project location, environments, local or existing S3 state sto
 
 ## Keyboard
 
-Use arrows and Tab to navigate; Enter opens an item. F2 continues or reviews, F3 switches preview, Ctrl+S saves a form or working draft, and Esc goes back. In Resources, `a` adds EC2, `s` adds a security group, and `d` requests deletion. In Review, `g` generates after confirmation. `?` opens contextual help. On a narrow terminal, F3 opens full-width previews.
+Use arrows and Tab to navigate; Enter opens an item. Ctrl+N continues, `r` reviews, `p` switches preview, Ctrl+S saves a form or working draft, and Esc goes back. In forms, Enter advances and finishes at the last visible field; Ctrl+N finishes immediately. F2/F3 remain optional aliases. In Resources, `a` adds EC2, `s` adds a security group, and `d` requests deletion. In Review, `g` generates after confirmation. `?` opens contextual help. On a narrow terminal, `p` opens full-width previews.
 
 ## Project layout
 

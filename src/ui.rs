@@ -428,6 +428,13 @@ impl App {
         if stage == Stage::Backend {
             self.edit_backend();
         }
+        match stage {
+            Stage::Project => self.status("Step 1/5: name your project and choose its folder. Enter advances; Ctrl+N finishes the form.", false),
+            Stage::Environments => self.status("Step 2/5: Space selects environments. Enter edits region/profile. Ctrl+N continues to backend.", false),
+            Stage::Backend => self.status("Step 3/5: choose state storage. Enter advances; Ctrl+N finishes and opens resources.", false),
+            Stage::Resources => self.status("Step 4/5: a adds EC2, s adds SG. Tab changes environment. Press r when ready to review files.", false),
+            _ => {}
+        }
         if stage == Stage::Review {
             match project::changes(&self.output, &self.project) {
                 Ok(files) => {
@@ -477,6 +484,19 @@ impl App {
                     }
                     self.status("Unsaved form changes discarded.", false);
                 }
+                KeyCode::F(1) => self.modal = Some(Modal::Help),
+                KeyCode::Enter
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        || self
+                            .editor
+                            .as_ref()
+                            .is_some_and(|e| e.visible().last() == Some(&e.selected)) =>
+                {
+                    self.commit_editor(true)
+                }
+                KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.commit_editor(true)
+                }
                 KeyCode::F(2) => self.commit_editor(true),
                 KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.commit_editor(false)
@@ -497,7 +517,7 @@ impl App {
             self.save_draft();
             return;
         }
-        if key.code == KeyCode::F(3) {
+        if key.code == KeyCode::F(3) || key.code == KeyCode::Char('p') {
             if self.screen_width.get() < 110 {
                 if !self.compact_preview {
                     self.compact_preview = true;
@@ -514,6 +534,14 @@ impl App {
             self.preview_scroll = 0;
             return;
         }
+        if self.compact_preview && matches!(key.code, KeyCode::Up | KeyCode::Down) {
+            self.preview_scroll = if key.code == KeyCode::Down {
+                self.preview_scroll.saturating_add(1)
+            } else {
+                self.preview_scroll.saturating_sub(1)
+            };
+            return;
+        }
         if key.code == KeyCode::PageDown {
             self.preview_scroll = self.preview_scroll.saturating_add(8);
             return;
@@ -522,6 +550,12 @@ impl App {
             self.preview_scroll = self.preview_scroll.saturating_sub(8);
             return;
         }
+        let key = if key.code == KeyCode::Char('n') && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE)
+        } else {
+            key
+        };
         match self.stage {
             Stage::Welcome => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => self.selected = (self.selected + 3) % 4,
@@ -648,8 +682,12 @@ impl App {
                 _ => {}
             },
             Stage::Review => match key.code {
-                KeyCode::Enter if self.screen_width.get() < 110 => {
-                    self.compact_review_diff = !self.compact_review_diff
+                KeyCode::Enter => {
+                    if self.screen_width.get() < 110 {
+                        self.compact_review_diff = !self.compact_review_diff;
+                    } else {
+                        self.status("Selected file diff is shown on the right. PgUp/PgDn scrolls it; g generates files.", false);
+                    }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.selected = self.selected.saturating_sub(1);
@@ -1580,15 +1618,15 @@ impl App {
             status,
         );
         let hints = if self.editor.is_some() {
-            "Tab/↑↓ Field  ←→ Choice  Ctrl+U Clear  Ctrl+S Save  F2 Continue  Esc Cancel"
+            "Enter Next / Finish   Tab Fields   ←→ Choice   Ctrl+N Finish   Ctrl+S Save   Esc Cancel"
         } else {
             match self.stage {
                 Stage::Welcome => "↑↓ Select   Enter Open   ? Help   q Quit",
-                Stage::Environments => "Space Select   Enter Settings   a Add   F2 Continue   Esc Back   ? Help",
-                Stage::Resources => "a Add EC2   s Add SG   Enter Edit   d Remove   [/] Env   F2 Review   F3 Preview   ? Help",
+                Stage::Environments => "Space Select   Enter Settings   a Add   Ctrl+N Continue   Esc Back   ? Help",
+                Stage::Resources => "a Add EC2   s Add SG   Enter Edit   d Remove   [/] Env   r Review   p Preview   ? Help",
                 Stage::Review => "↑↓ File   Enter Diff   PgUp/PgDn Scroll   g Generate files   Esc Back   ? Help",
                 Stage::Done => "Enter Return to workspace   q Quit",
-                _ => "Enter Edit   F2 Continue   Esc Back   ? Help",
+                _ => "Enter Edit   Ctrl+N Continue   Esc Back   ? Help",
             }
         };
         frame.render_widget(
@@ -2186,7 +2224,9 @@ impl App {
             return;
         };
         let (title, text) = match modal {
-            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nF2 / r       Review files\nF3           Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nF2           Save form and continue\nEsc          Discard unsaved form changes\n\nText fields accept letters such as q, s, and g normally.\nEnter / Esc closes this help.".into()),
+            Modal::Help => (" Keyboard help ", "WORKSPACE\n↑/↓ or j/k  Select resource or item\na            Add EC2\ns            Add managed security group\nEnter        Edit selected resource\nd / Delete   Remove definition from draft\n[ / ] / Tab  Switch active environment\ne            Environment settings\nn            Environment selection\nr / Ctrl+N   Review files\np            Switch tfvars / dependencies / outputs\nPgUp/PgDn    Scroll preview\nCtrl+S       Save local draft\n\nFORM\nTab / ↑↓     Select field\n← / →        Change choice or move cursor\nSpace        Toggle checkbox\nCtrl+U       Clear text field\nCtrl+S       Save form to draft\nEnter        Next field; finish at the last field
+Ctrl+N       Save form and continue
+F1           Help\nEsc          Discard unsaved form changes\n\nText fields accept letters such as q, s, and g normally.\nEnter / Esc closes this help.".into()),
             Modal::Generate => (" Generate files ", format!("Write Terraform configuration to:\n\n{}\n\n{} environment(s) · {} changed file(s)\n\nExisting subnet and SG IDs remain references.\nManual edits and stale file changes block publishing.\nNo Terraform apply or destroy is executed.\n\nEnter / y Generate files     Esc / n Cancel", self.output.display(), self.project.environments.len(), self.review_files.iter().filter(|f| f.action != "unchanged").count())),
             Modal::Remove(row) => (" Remove resource definition ", format!("Remove {} from the draft?\n\nA later Terraform apply may destroy the managed resource.\nReferenced shared security groups remain in the draft.\n\nEnter / y Remove definition     Esc / n Cancel", match row { ResourceRow::Instance(k) => format!("EC2 '{k}'"), ResourceRow::SecurityGroup(k) => format!("SG '{k}'") })),
             Modal::Quit => (" Exit EasyTF ", if self.dirty { "Save the working draft locally and exit?\n\nNo Terraform files will be written.\n\nEnter / y Save draft and exit     Esc / n Stay".into() }
@@ -2381,5 +2421,39 @@ mod tests {
         terminal.draw(|f| app.draw(f)).unwrap();
         app.modal = Some(Modal::Help);
         terminal.draw(|f| app.draw(f)).unwrap();
+    }
+    #[test]
+    fn wizard_continues_without_function_keys_and_preview_scrolls() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(
+            Project::empty("test-project"),
+            temp.path().join("project"),
+            None,
+            false,
+            true,
+        );
+        app.draft_path = temp.path().join("draft.json");
+        app.go(Stage::Project);
+        let next = || Event::Key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        app.handle(next());
+        assert_eq!(app.stage, Stage::Environments);
+        app.handle(key(KeyCode::Down));
+        app.handle(key(KeyCode::Char(' ')));
+        app.handle(next());
+        assert_eq!(app.stage, Stage::Backend);
+        app.handle(next());
+        assert_eq!(app.stage, Stage::Resources);
+        assert!(app.editor.is_none());
+        app.screen_width.set(80);
+        app.handle(key(KeyCode::Char('p')));
+        assert!(app.compact_preview);
+        app.handle(key(KeyCode::Down));
+        assert_eq!(app.preview_scroll, 1);
+        app.handle(key(KeyCode::Esc));
+        assert!(!app.compact_preview);
+        app.handle(key(KeyCode::Char('r')));
+        assert_eq!(app.stage, Stage::Review);
+        app.handle(key(KeyCode::Char('g')));
+        assert!(matches!(app.modal, Some(Modal::Generate)));
     }
 }
