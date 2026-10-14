@@ -4,3 +4,7 @@
 *.tfstate.*
 .terraform/
 
+
+# Native macOS application
+native/.build/
+native/build/
