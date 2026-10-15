@@ -9,3 +9,6 @@ pub mod config;
 pub mod structured;
 
 pub mod lb;
+
+pub mod catalog;
+mod catalog_templates;

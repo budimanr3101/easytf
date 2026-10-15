@@ -1,0 +1,988 @@
+{
+  "name": "catalog-example",
+  "environments": {
+    "dev": {
+      "backend": {
+        "type": "local"
+      },
+      "values": {
+        "aws_region": "ap-southeast-3",
+        "aws_profile": null,
+        "tags": {
+          "env": "dev",
+          "project": "catalog-example"
+        },
+        "instances": {},
+        "security_groups": {},
+        "load_balancers": {},
+        "managed_resources": {
+          "db_instance": {
+            "kind": "aws_db_instance",
+            "configuration": {
+              "instance_class": "db.t3.micro",
+              "engine": "postgres",
+              "allocated_storage": 20,
+              "storage_type": "gp3",
+              "storage_encrypted": true,
+              "manage_master_user_password": true,
+              "username": "dbadmin",
+              "backup_retention_period": 7,
+              "publicly_accessible": false,
+              "deletion_protection": true,
+              "skip_final_snapshot": false,
+              "identifier": "catalog-db",
+              "final_snapshot_identifier": "catalog-db-final"
+            },
+            "links": {
+              "/db_subnet_group_name": [
+                {
+                  "resource_key": "db_subnet_group",
+                  "output": "name"
+                }
+              ],
+              "/vpc_security_group_ids": [
+                {
+                  "resource_key": "security_group",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "db_subnet_group": {
+            "kind": "aws_db_subnet_group",
+            "configuration": {
+              "subnet_ids": [
+                "sample-subnet-ids"
+              ],
+              "name": "catalog-db-subnets"
+            },
+            "links": {
+              "/subnet_ids": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                },
+                {
+                  "resource_key": "subnet_b",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "db_parameter_group": {
+            "kind": "aws_db_parameter_group",
+            "configuration": {
+              "family": "postgres16",
+              "name": "catalog-pg"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "rds_cluster": {
+            "kind": "aws_rds_cluster",
+            "configuration": {
+              "engine": "aurora-postgresql",
+              "manage_master_user_password": true,
+              "master_username": "dbadmin",
+              "storage_encrypted": true,
+              "backup_retention_period": 7,
+              "deletion_protection": true,
+              "skip_final_snapshot": false,
+              "cluster_identifier": "catalog-aurora",
+              "final_snapshot_identifier": "catalog-aurora-final"
+            },
+            "links": {
+              "/db_subnet_group_name": [
+                {
+                  "resource_key": "db_subnet_group",
+                  "output": "name"
+                }
+              ],
+              "/vpc_security_group_ids": [
+                {
+                  "resource_key": "security_group",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "rds_cluster_instance": {
+            "kind": "aws_rds_cluster_instance",
+            "configuration": {
+              "cluster_identifier": "sample-cluster-identifier",
+              "engine": "aurora-postgresql",
+              "instance_class": "db.r6g.large",
+              "publicly_accessible": false,
+              "identifier": "catalog-aurora-1"
+            },
+            "links": {
+              "/cluster_identifier": [
+                {
+                  "resource_key": "rds_cluster",
+                  "output": "cluster_identifier"
+                }
+              ],
+              "/engine": [
+                {
+                  "resource_key": "rds_cluster",
+                  "output": "engine"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "rds_cluster_parameter_group": {
+            "kind": "aws_rds_cluster_parameter_group",
+            "configuration": {
+              "family": "aurora-postgresql16",
+              "name": "catalog-aurora-pg"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "eks_cluster": {
+            "kind": "aws_eks_cluster",
+            "configuration": {
+              "name": "catalog-eks",
+              "role_arn": "sample-role-arn",
+              "vpc_config": [
+                {
+                  "endpoint_private_access": true,
+                  "endpoint_public_access": false,
+                  "subnet_ids": []
+                }
+              ],
+              "access_config": [
+                {
+                  "authentication_mode": "API",
+                  "bootstrap_cluster_creator_admin_permissions": false
+                }
+              ]
+            },
+            "links": {
+              "/role_arn": [
+                {
+                  "resource_key": "iam_role",
+                  "output": "arn"
+                }
+              ],
+              "/vpc_config/0/subnet_ids": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                },
+                {
+                  "resource_key": "subnet_b",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [
+              "iam_role_policy_attachment"
+            ],
+            "tags": {}
+          },
+          "eks_node_group": {
+            "kind": "aws_eks_node_group",
+            "configuration": {
+              "cluster_name": "sample-cluster-name",
+              "node_role_arn": "sample-node-role-arn",
+              "subnet_ids": [
+                "sample-subnet-ids"
+              ],
+              "scaling_config": [
+                {
+                  "min_size": 1,
+                  "desired_size": 2,
+                  "max_size": 3
+                }
+              ],
+              "capacity_type": "ON_DEMAND",
+              "instance_types": [
+                "t3.medium"
+              ],
+              "node_group_name": "catalog-workers"
+            },
+            "links": {
+              "/cluster_name": [
+                {
+                  "resource_key": "eks_cluster",
+                  "output": "name"
+                }
+              ],
+              "/node_role_arn": [
+                {
+                  "resource_key": "worker_role",
+                  "output": "arn"
+                }
+              ],
+              "/subnet_ids": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                },
+                {
+                  "resource_key": "subnet_b",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [
+              "worker_policy",
+              "worker_registry"
+            ],
+            "tags": {}
+          },
+          "eks_fargate_profile": {
+            "kind": "aws_eks_fargate_profile",
+            "configuration": {
+              "cluster_name": "sample-cluster-name",
+              "fargate_profile_name": "catalog-fargate",
+              "pod_execution_role_arn": "sample-pod-execution-role-arn",
+              "selector": [
+                {
+                  "namespace": "default"
+                }
+              ]
+            },
+            "links": {
+              "/cluster_name": [
+                {
+                  "resource_key": "eks_cluster",
+                  "output": "name"
+                }
+              ],
+              "/pod_execution_role_arn": [
+                {
+                  "resource_key": "fargate_role",
+                  "output": "arn"
+                }
+              ],
+              "/subnet_ids": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [
+              "fargate_policy"
+            ],
+            "tags": {}
+          },
+          "eks_addon": {
+            "kind": "aws_eks_addon",
+            "configuration": {
+              "addon_name": "vpc-cni",
+              "cluster_name": "sample-cluster-name"
+            },
+            "links": {
+              "/cluster_name": [
+                {
+                  "resource_key": "eks_cluster",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "eks_access_entry": {
+            "kind": "aws_eks_access_entry",
+            "configuration": {
+              "cluster_name": "sample-cluster-name",
+              "principal_arn": "arn:aws:iam::123456789012:role/ExistingClusterOperator",
+              "type": "STANDARD"
+            },
+            "links": {
+              "/cluster_name": [
+                {
+                  "resource_key": "eks_cluster",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "eks_access_policy_association": {
+            "kind": "aws_eks_access_policy_association",
+            "configuration": {
+              "cluster_name": "sample-cluster-name",
+              "policy_arn": "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy",
+              "principal_arn": "arn:aws:iam::123456789012:role/ExistingClusterOperator",
+              "access_scope": [
+                {
+                  "type": "cluster"
+                }
+              ]
+            },
+            "links": {
+              "/cluster_name": [
+                {
+                  "resource_key": "eks_cluster",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [
+              "eks_access_entry"
+            ],
+            "tags": {}
+          },
+          "s3_bucket": {
+            "kind": "aws_s3_bucket",
+            "configuration": {
+              "force_destroy": false,
+              "bucket": "replace-with-globally-unique-catalog-bucket"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "s3_bucket_versioning": {
+            "kind": "aws_s3_bucket_versioning",
+            "configuration": {
+              "bucket": "sample-bucket",
+              "versioning_configuration": [
+                {
+                  "status": "Enabled"
+                }
+              ]
+            },
+            "links": {
+              "/bucket": [
+                {
+                  "resource_key": "s3_bucket",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "s3_bucket_server_side_encryption_configuration": {
+            "kind": "aws_s3_bucket_server_side_encryption_configuration",
+            "configuration": {
+              "bucket": "sample-bucket",
+              "rule": [
+                {
+                  "apply_server_side_encryption_by_default": [
+                    {
+                      "sse_algorithm": "AES256"
+                    }
+                  ]
+                }
+              ]
+            },
+            "links": {
+              "/bucket": [
+                {
+                  "resource_key": "s3_bucket",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "s3_bucket_public_access_block": {
+            "kind": "aws_s3_bucket_public_access_block",
+            "configuration": {
+              "bucket": "sample-bucket",
+              "block_public_acls": true,
+              "block_public_policy": true,
+              "ignore_public_acls": true,
+              "restrict_public_buckets": true
+            },
+            "links": {
+              "/bucket": [
+                {
+                  "resource_key": "s3_bucket",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "s3_bucket_policy": {
+            "kind": "aws_s3_bucket_policy",
+            "configuration": {
+              "bucket": "sample-bucket",
+              "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Deny\", \"Principal\": \"*\", \"Action\": \"s3:*\", \"Resource\": [\"arn:aws:s3:::replace-with-globally-unique-catalog-bucket\", \"arn:aws:s3:::replace-with-globally-unique-catalog-bucket/*\"], \"Condition\": {\"Bool\": {\"aws:SecureTransport\": \"false\"}}}]}"
+            },
+            "links": {
+              "/bucket": [
+                {
+                  "resource_key": "s3_bucket",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "ecr_repository": {
+            "kind": "aws_ecr_repository",
+            "configuration": {
+              "name": "catalog-repository",
+              "image_tag_mutability": "IMMUTABLE",
+              "image_scanning_configuration": [
+                {
+                  "scan_on_push": true
+                }
+              ],
+              "force_delete": false
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "ecr_lifecycle_policy": {
+            "kind": "aws_ecr_lifecycle_policy",
+            "configuration": {
+              "policy": "{\"rules\": [{\"rulePriority\": 1, \"selection\": {\"tagStatus\": \"untagged\", \"countType\": \"sinceImagePushed\", \"countUnit\": \"days\", \"countNumber\": 30}, \"action\": {\"type\": \"expire\"}}]}",
+              "repository": "sample-repository"
+            },
+            "links": {
+              "/repository": [
+                {
+                  "resource_key": "ecr_repository",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "iam_role": {
+            "kind": "aws_iam_role",
+            "configuration": {
+              "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": {\"Service\": \"eks.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}",
+              "name": "catalog-eks-role"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "iam_policy": {
+            "kind": "aws_iam_policy",
+            "configuration": {
+              "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"logs:DescribeLogGroups\", \"Resource\": \"*\"}]}",
+              "name": "catalog-logs"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "iam_role_policy_attachment": {
+            "kind": "aws_iam_role_policy_attachment",
+            "configuration": {
+              "policy_arn": "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+              "role": "sample-role"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "iam_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "iam_role_policy": {
+            "kind": "aws_iam_role_policy",
+            "configuration": {
+              "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"logs:DescribeLogGroups\", \"Resource\": \"*\"}]}",
+              "role": "sample-role",
+              "name": "catalog-inline"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "iam_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "iam_instance_profile": {
+            "kind": "aws_iam_instance_profile",
+            "configuration": {
+              "name": "catalog-instance-profile"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "worker_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "cloudwatch_log_group": {
+            "kind": "aws_cloudwatch_log_group",
+            "configuration": {
+              "retention_in_days": 30,
+              "name": "/catalog/application"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "cloudwatch_metric_alarm": {
+            "kind": "aws_cloudwatch_metric_alarm",
+            "configuration": {
+              "alarm_name": "catalog-cpu",
+              "comparison_operator": "GreaterThanThreshold",
+              "evaluation_periods": 2,
+              "metric_name": "CPUUtilization",
+              "namespace": "AWS/EC2",
+              "period": 300,
+              "statistic": "Average",
+              "threshold": 80
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "vpc": {
+            "kind": "aws_vpc",
+            "configuration": {
+              "enable_dns_support": true,
+              "enable_dns_hostnames": true,
+              "cidr_block": "10.60.0.0/16"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "subnet": {
+            "kind": "aws_subnet",
+            "configuration": {
+              "vpc_id": "sample-vpc-id",
+              "map_public_ip_on_launch": false,
+              "cidr_block": "10.60.1.0/24",
+              "availability_zone": "ap-southeast-3a"
+            },
+            "links": {
+              "/vpc_id": [
+                {
+                  "resource_key": "vpc",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "route_table": {
+            "kind": "aws_route_table",
+            "configuration": {
+              "vpc_id": "sample-vpc-id"
+            },
+            "links": {
+              "/vpc_id": [
+                {
+                  "resource_key": "vpc",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "route": {
+            "kind": "aws_route",
+            "configuration": {
+              "route_table_id": "sample-route-table-id",
+              "destination_cidr_block": "0.0.0.0/0"
+            },
+            "links": {
+              "/route_table_id": [
+                {
+                  "resource_key": "route_table",
+                  "output": "id"
+                }
+              ],
+              "/gateway_id": [
+                {
+                  "resource_key": "internet_gateway",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "route_table_association": {
+            "kind": "aws_route_table_association",
+            "configuration": {
+              "route_table_id": "sample-route-table-id"
+            },
+            "links": {
+              "/subnet_id": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                }
+              ],
+              "/route_table_id": [
+                {
+                  "resource_key": "route_table",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "internet_gateway": {
+            "kind": "aws_internet_gateway",
+            "configuration": {},
+            "links": {
+              "/vpc_id": [
+                {
+                  "resource_key": "vpc",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "eip": {
+            "kind": "aws_eip",
+            "configuration": {
+              "domain": "vpc"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "nat_gateway": {
+            "kind": "aws_nat_gateway",
+            "configuration": {},
+            "links": {
+              "/subnet_id": [
+                {
+                  "resource_key": "subnet",
+                  "output": "id"
+                }
+              ],
+              "/allocation_id": [
+                {
+                  "resource_key": "eip",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "security_group": {
+            "kind": "aws_security_group",
+            "configuration": {
+              "name": "catalog-db-access",
+              "description": "Example database network access"
+            },
+            "links": {
+              "/vpc_id": [
+                {
+                  "resource_key": "vpc",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "vpc_security_group_ingress_rule": {
+            "kind": "aws_vpc_security_group_ingress_rule",
+            "configuration": {
+              "ip_protocol": "tcp",
+              "security_group_id": "sample-security-group-id",
+              "from_port": 5432,
+              "to_port": 5432,
+              "cidr_ipv4": "10.60.0.0/16"
+            },
+            "links": {
+              "/security_group_id": [
+                {
+                  "resource_key": "security_group",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "vpc_security_group_egress_rule": {
+            "kind": "aws_vpc_security_group_egress_rule",
+            "configuration": {
+              "ip_protocol": "-1",
+              "security_group_id": "sample-security-group-id",
+              "cidr_ipv4": "0.0.0.0/0"
+            },
+            "links": {
+              "/security_group_id": [
+                {
+                  "resource_key": "security_group",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "route53_zone": {
+            "kind": "aws_route53_zone",
+            "configuration": {
+              "name": "catalog.example.invalid"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "route53_record": {
+            "kind": "aws_route53_record",
+            "configuration": {
+              "name": "catalog.example.invalid",
+              "type": "A",
+              "zone_id": "sample-zone-id",
+              "ttl": 300,
+              "records": [
+                "192.0.2.1"
+              ]
+            },
+            "links": {
+              "/zone_id": [
+                {
+                  "resource_key": "route53_zone",
+                  "output": "zone_id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "acm_certificate": {
+            "kind": "aws_acm_certificate",
+            "configuration": {
+              "validation_method": "DNS",
+              "domain_name": "catalog.example.invalid"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "acm_certificate_validation": {
+            "kind": "aws_acm_certificate_validation",
+            "configuration": {
+              "certificate_arn": "sample-certificate-arn",
+              "validation_record_fqdns": [
+                "_replace-validation.catalog.example.invalid"
+              ]
+            },
+            "links": {
+              "/certificate_arn": [
+                {
+                  "resource_key": "acm_certificate",
+                  "output": "arn"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "cloudfront_distribution": {
+            "kind": "aws_cloudfront_distribution",
+            "configuration": {
+              "enabled": true,
+              "default_cache_behavior": [
+                {
+                  "allowed_methods": [
+                    "GET",
+                    "HEAD"
+                  ],
+                  "cached_methods": [
+                    "GET",
+                    "HEAD"
+                  ],
+                  "target_origin_id": "s3",
+                  "viewer_protocol_policy": "redirect-to-https",
+                  "forwarded_values": [
+                    {
+                      "query_string": false,
+                      "cookies": [
+                        {
+                          "forward": "none"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "origin": [
+                {
+                  "domain_name": "placeholder.invalid",
+                  "origin_id": "s3",
+                  "s3_origin_config": [
+                    {
+                      "origin_access_identity": ""
+                    }
+                  ]
+                }
+              ],
+              "restrictions": [
+                {
+                  "geo_restriction": [
+                    {
+                      "restriction_type": "none"
+                    }
+                  ]
+                }
+              ],
+              "viewer_certificate": [
+                {
+                  "cloudfront_default_certificate": true
+                }
+              ]
+            },
+            "links": {
+              "/origin/0/domain_name": [
+                {
+                  "resource_key": "s3_bucket",
+                  "output": "bucket_regional_domain_name"
+                }
+              ],
+              "/origin/0/origin_access_control_id": [
+                {
+                  "resource_key": "cloudfront_origin_access_control",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "cloudfront_origin_access_control": {
+            "kind": "aws_cloudfront_origin_access_control",
+            "configuration": {
+              "name": "catalog-oac",
+              "origin_access_control_origin_type": "s3",
+              "signing_behavior": "always",
+              "signing_protocol": "sigv4"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "subnet_b": {
+            "kind": "aws_subnet",
+            "configuration": {
+              "vpc_id": "sample-vpc-id",
+              "map_public_ip_on_launch": false,
+              "cidr_block": "10.60.2.0/24",
+              "availability_zone": "ap-southeast-3b"
+            },
+            "links": {
+              "/vpc_id": [
+                {
+                  "resource_key": "vpc",
+                  "output": "id"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "worker_role": {
+            "kind": "aws_iam_role",
+            "configuration": {
+              "name": "catalog-worker",
+              "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": {\"Service\": \"ec2.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "fargate_role": {
+            "kind": "aws_iam_role",
+            "configuration": {
+              "name": "catalog-fargate",
+              "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": {\"Service\": \"eks-fargate-pods.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}"
+            },
+            "links": {},
+            "depends_on": [],
+            "tags": {}
+          },
+          "worker_policy": {
+            "kind": "aws_iam_role_policy_attachment",
+            "configuration": {
+              "policy_arn": "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "worker_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "worker_registry": {
+            "kind": "aws_iam_role_policy_attachment",
+            "configuration": {
+              "policy_arn": "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "worker_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          },
+          "fargate_policy": {
+            "kind": "aws_iam_role_policy_attachment",
+            "configuration": {
+              "policy_arn": "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+            },
+            "links": {
+              "/role": [
+                {
+                  "resource_key": "fargate_role",
+                  "output": "name"
+                }
+              ]
+            },
+            "depends_on": [],
+            "tags": {}
+          }
+        }
+      }
+    }
+  }
+}

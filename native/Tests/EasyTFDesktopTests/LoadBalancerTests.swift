@@ -27,7 +27,7 @@ final class LoadBalancerTests: XCTestCase {
         setenv("EASYTF_DESKTOP_STATE_DIR", folder.path, 1)
         defer { if let previous = previous { setenv("EASYTF_DESKTOP_STATE_DIR", previous, 1) } else { unsetenv("EASYTF_DESKTOP_STATE_DIR") }; try? FileManager.default.removeItem(at: folder) }
         await MainActor.run {
-            let model = Workspace()
+            let model = Workspace(loadCatalog: false)
             model.create(name: "infra", root: folder.appendingPathComponent("infra"), environments: ["dev"], region: "ap-southeast-3", profile: "", bucket: "", backendRegion: "ap-southeast-3")
             model.add(kind: "instances", key: "web")
             model.add(kind: "security_groups", key: "shared")

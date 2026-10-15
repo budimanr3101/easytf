@@ -109,3 +109,7 @@ Terraform requires version 1.10 or newer, below 2.0. The generated AWS provider 
 ## Native macOS application
 
 EasyTF also has a native SwiftUI workspace backed by the same Rust engine. Build with `./scripts/build-macos.sh`, then open `native/build/EasyTF.app`. It supports project/environment setup, EC2, multi-rule SG, and ALB/NLB editors with linked target groups/listeners, read-only AWS pickers, inherited tags, multiple EBS volumes, draft recovery, Terraform preview, and generation. See [native app documentation](native/README.md) for scope and verification.
+
+### Extended native AWS catalog
+
+The macOS app now includes 43 schema-driven AWS resource types covering RDS/Aurora, all EKS compute modes, S3/ECR, IAM/CloudWatch, networking, and DNS/edge. Inputs remain in tfvars; resource output links and explicit dependencies produce separate Terraform module references. See [the native catalog workflow](native/README.md#aws-resource-catalog) and [the complete synthetic fixture](examples/catalog-complete.json).

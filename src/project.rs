@@ -50,7 +50,7 @@ pub fn load(root: &Path) -> Result<Loaded> {
     if metadata.schema_version != SCHEMA_VERSION
         || !matches!(
             metadata.template_version.as_str(),
-            TEMPLATE_VERSION | "0.1.0" | "0.2.0"
+            TEMPLATE_VERSION | "0.1.0" | "0.2.0" | "0.3.0"
         )
     {
         bail!("Unsupported project schema/template version; automatic template migration is not supported");

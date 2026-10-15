@@ -73,6 +73,7 @@ struct WorkspaceView: View {
                 if model.opened { Button("Review Terraform") { model.review() }.disabled(model.busy) }
             }
         }
+        .sheet(isPresented: $model.showCatalog) { ResourceCatalogView(model: model) }
         .sheet(isPresented: $model.showNew) { NewProjectView(model: model) }
         .sheet(isPresented: Binding(get: { model.addKind != nil }, set: { if !$0 { model.addKind = nil } })) { AddResourceView(model: model) }
         .sheet(isPresented: Binding(get: { model.discoveryKind != nil }, set: { if !$0 { model.cancel(); model.discoveryKind = nil } })) { DiscoveryView(model: model) }
@@ -89,6 +90,10 @@ struct WorkspaceView: View {
                 Section("EC2 instances") { ForEach(model.keys("instances"), id: \.self) { ResourceLabel(title: $0, symbol: "server.rack", color: Theme.ec2).tag("ec2:" + $0) } }
                 Section("Security groups") { ForEach(model.keys("security_groups"), id: \.self) { ResourceLabel(title: $0, symbol: "checkmark.shield", color: Theme.securityGroup).tag("sg:" + $0) } }
                 Section("Load balancers") { ForEach(model.keys("load_balancers"), id: \.self) { ResourceLabel(title: $0, symbol: "network", color: Theme.loadBalancer).tag("lb:" + $0) } }
+                ForEach(Set(model.catalog.map(\.category)).sorted(), id: \.self) { category in
+                    let keys = model.keys("managed_resources").filter { key in model.catalog.first { $0.id == model.values["managed_resources"][key]["kind"].text }?.category == category }
+                    if !keys.isEmpty { Section(category) { ForEach(keys, id: \.self) { ResourceLabel(title: $0, symbol: "shippingbox", color: Theme.loadBalancer).tag("managed:" + $0) } } }
+                }
                 ResourceLabel(title: "Terraform review", symbol: "doc.text.magnifyingglass", color: Theme.accent).tag("review")
             }.listStyle(.sidebar).disabled(model.busy)
             Divider()
@@ -98,6 +103,12 @@ struct WorkspaceView: View {
                 Divider()
                 Button("Application Load Balancer · ALB") { model.addKind = "application" }
                 Button("Network Load Balancer · NLB") { model.addKind = "network" }
+                Divider()
+                ForEach(Set(model.catalog.map(\.category)).sorted(), id: \.self) { category in
+                    Button(category + "…") { model.catalogFilter = category; model.showCatalog = true }
+                }
+                Divider()
+                Button("All AWS resources…") { model.catalogFilter = ""; model.showCatalog = true }
             } label: { Label("Add resource", systemImage: "plus") }.padding(14).disabled(model.busy)
         }
     }
@@ -105,6 +116,7 @@ struct WorkspaceView: View {
         if let selection = model.selection, selection.hasPrefix("ec2:") { InstanceEditor(model: model, key: String(selection.dropFirst(4))).id(model.environment + selection) }
         else if let selection = model.selection, selection.hasPrefix("sg:") { SecurityGroupEditor(model: model, key: String(selection.dropFirst(3))).id(model.environment + selection) }
         else if let selection = model.selection, selection.hasPrefix("lb:") { LoadBalancerEditor(model: model, key: String(selection.dropFirst(3))).id(model.environment + selection) }
+        else if let selection = model.selection, selection.hasPrefix("managed:") { CatalogResourceEditor(model: model, key: String(selection.dropFirst(8))).id(model.environment + selection) }
         else if model.selection == "review" { ReviewView(model: model) }
         else { EnvironmentEditor(model: model).id(model.environment) }
     }

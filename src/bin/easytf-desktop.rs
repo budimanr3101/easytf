@@ -48,6 +48,9 @@ impl From<Baseline> for project::Loaded {
 }
 fn run(request: Request) -> Result<Value> {
     match request.operation.as_str() {
+        "catalog" => Ok(serde_json::from_str(include_str!(
+            "../../schemas/resource-catalog.json"
+        ))?),
         "schema" => Ok(serde_json::from_str(include_str!(
             "../../schemas/ec2-options.json"
         ))?),

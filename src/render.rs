@@ -125,6 +125,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>> {
     }
     readme.push_str("## Ownership and scope\n\nSubnet IDs and existing security group IDs use AWS data sources. They are read\nwithout adopting their infrastructure lifecycle. Security groups declared in\n`security_groups` and EC2 instances declared in `instances` are managed resources.\nModule outputs connect new resources and expose instance/network information.\nALB/NLB target attachments depend on EC2 IDs/private IPs and target group ARNs.\nLB/TG creation can run in parallel with EC2; attachment keys stay known during plan.\n\nS3 backend buckets must already exist. Backend migration, arbitrary Terraform\nproject adoption, imports, and Terraform apply are outside this MVP.\nUse Ctrl+B on subnet, AMI, and existing SG fields for explicit read-only AWS discovery.\nThe SG/VPC precondition supports security groups in their primary VPC;\nadditional VPC associations are outside this MVP. Default root volumes are encrypted gp3; optional root disk/launch-template configuration can override storage.\nEC2 optional settings live under each instance configuration object in tfvars.\ninstance_role generates a profile for an existing role; iam_instance_profile references a profile directly.\nNew SGs have no ingress until rules are supplied; outbound IPv4 is explicit.\n\nEasyTF checks local HCL and input consistency. AWS existence, permissions,\nAMI compatibility, routing, and deployability require Terraform/AWS checks.\nEasyTF never executes Terraform apply or destroy.\n\nGenerated `.tf` files are protected against manual overwrites. Input `.tfvars`\nand backend values are read back; their formatting is canonicalized on generation.\nKeep `.easytf.toml` and `.terraform.lock.hcl` in version control.\nLocal conflict snapshots are ignored by Git. On a fresh clone, existing generated\nfiles must match this template before updates can be published.\n");
     files.insert("README.md".into(), readme);
+    crate::catalog::add_files(project, &mut files)?;
     for (path, content) in &files {
         if path.ends_with(".tf") || path.ends_with(".tfvars") || path.ends_with(".tfbackend") {
             hcl::parse(content)
@@ -150,7 +151,14 @@ const SG_OUTPUTS: &str = include_str!("../templates/sg_outputs.tf");
 /// Canonical literal input formatting without spawning Terraform. Multi-line
 /// objects/arrays separate scalar alignment groups, matching Terraform's formatter.
 pub fn format_input(value: &impl Serialize) -> Result<String> {
-    let raw = hcl::to_string(value)?;
+    align_assignments(hcl::to_string(value)?)
+}
+
+pub(crate) fn format_generated_hcl(value: &str) -> Result<String> {
+    align_assignments(hcl::format::to_string(&hcl::parse(value)?)?)
+}
+
+fn align_assignments(raw: String) -> Result<String> {
     let lines: Vec<&str> = raw.lines().collect();
     let mut output = Vec::with_capacity(lines.len());
     let mut index = 0;

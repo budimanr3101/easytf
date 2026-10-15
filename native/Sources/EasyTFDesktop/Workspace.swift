@@ -2,6 +2,9 @@ import SwiftUI
 import AppKit
 
 @MainActor final class Workspace: ObservableObject {
+    @Published var catalog: [CatalogDefinition] = []
+    @Published var showCatalog = false
+    var catalogFilter = ""
     @Published var draftAvailable = FileManager.default.fileExists(atPath: DraftStore.file.path)
     @Published var document: JSONValue = .null
     @Published var baseline: JSONValue = .null
@@ -23,11 +26,13 @@ import AppKit
     @Published var discoveryItems: [JSONValue] = []
     @Published var discoveryError: String?
     private var cancellation: EngineCancellation?
-    init() {
-        let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("--resume") { resumeDraft(); return }
-        if let index = arguments.firstIndex(of: "--project"), index + 1 < arguments.count {
-            open(URL(fileURLWithPath: arguments[index + 1]))
+    init(loadCatalog: Bool = true) {
+        guard loadCatalog else { return }
+        perform(.object(["operation": .string("catalog")])) { value in
+            self.catalog = value["resources"].object.map { CatalogDefinition(id: $0.key, value: $0.value) }.sorted { $0.title < $1.title }
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("--resume") { self.resumeDraft() }
+            else if let index = arguments.firstIndex(of: "--project"), index + 1 < arguments.count { self.open(URL(fileURLWithPath: arguments[index + 1])) }
         }
     }
     var opened: Bool { root != nil }
@@ -114,7 +119,37 @@ import AppKit
         }
         set(resource, path: valuesPath + [kind, key]); selection = (kind == "instances" ? "ec2:" : "sg:") + key; addKind = nil
     }
+    func removeCatalogValue(resourceKey: String, path: [String], relative: [String]) {
+        let base = valuesPath + ["managed_resources", resourceKey, "links"]
+        let existing = document.at(base).object
+        let pointer = "/" + relative.joined(separator: "/")
+        let parent = document.at(Array(path.dropLast()))
+        let removedIndex: Int? = { if case .array = parent { return relative.last.flatMap(Int.init) }; return nil }()
+        let prefix = "/" + relative.dropLast().joined(separator: "/") + "/"
+        var updated: [String: JSONValue] = [:]
+        for (key, value) in existing {
+            if key == pointer || key.hasPrefix(pointer + "/") { continue }
+            var newKey = key
+            if let index = removedIndex, key.hasPrefix(prefix) {
+                var components = key.dropFirst(prefix.count).split(separator: "/").map(String.init)
+                if let old = components.first.flatMap(Int.init), old > index { components[0] = String(old - 1); newKey = prefix + components.joined(separator: "/") }
+            }
+            updated[newKey] = value
+        }
+        remove(path: path); set(.object(updated), path: base)
+    }
+    func addCatalog(_ definition: CatalogDefinition, key: String) {
+        let resource: JSONValue = .object(["kind": .string(definition.id), "configuration": definition.configuration(key: key), "links": .object([:]), "depends_on": .array([]), "tags": .object([:])])
+        set(resource, path: valuesPath + ["managed_resources", key]); selection = "managed:" + key; showCatalog = false
+    }
+    func catalogDependents(_ target: String) -> [String] {
+        values["managed_resources"].object.filter { _, value in value["depends_on"].array.contains(.string(target)) || value["links"].object.values.flatMap(\.array).contains { $0["resource_key"].text == target } }.map(\.key).sorted()
+    }
     func delete(kind: String, key: String) {
+        let prefix = kind == "instances" ? "ec2:" : (kind == "security_groups" ? "sg:" : (kind == "load_balancers" ? "lb:" : ""))
+        let catalogUsers = catalogDependents(prefix + key)
+        guard catalogUsers.isEmpty else { error = "This resource is referenced by: " + catalogUsers.joined(separator: ", ") + ". Remove its references first."; return }
+
         if kind == "security_groups" {
             let dependents = ["instances", "load_balancers"].flatMap { collection in values[collection].object.filter { $0.value["security_group_keys"].array.contains(.string(key)) }.map(\.key) }
             if !dependents.isEmpty { error = "This security group is used by: " + dependents.joined(separator: ", "); return }

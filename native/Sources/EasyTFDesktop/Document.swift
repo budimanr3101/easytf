@@ -31,13 +31,27 @@ indirect enum JSONValue: Codable, Hashable {
         get { object[key] ?? .null }
         set { var v = object; v[key] = newValue; self = .object(v) }
     }
-    func at(_ path: [String]) -> JSONValue { path.reduce(self) { $0[$1] } }
+    func at(_ path: [String]) -> JSONValue {
+        path.reduce(self) { value, key in
+            if case .array(let values) = value, let index = Int(key), values.indices.contains(index) { return values[index] }
+            return value[key]
+        }
+    }
     mutating func set(_ value: JSONValue, at path: [String]) {
         guard let first = path.first else { self = value; return }
+        if case .array(var items) = self {
+            guard let index = Int(first), items.indices.contains(index) else { return }
+            items[index].set(value, at: Array(path.dropFirst())); self = .array(items); return
+        }
         var child = self[first]; child.set(value, at: Array(path.dropFirst())); self[first] = child
     }
     mutating func remove(at path: [String]) {
         guard let first = path.first else { return }
+        if case .array(var items) = self {
+            guard let index = Int(first), items.indices.contains(index) else { return }
+            if path.count == 1 { items.remove(at: index) } else { items[index].remove(at: Array(path.dropFirst())) }
+            self = .array(items); return
+        }
         if path.count == 1 { var v = object; v.removeValue(forKey: first); self = .object(v) }
         else { var v = self[first]; v.remove(at: Array(path.dropFirst())); self[first] = v }
     }

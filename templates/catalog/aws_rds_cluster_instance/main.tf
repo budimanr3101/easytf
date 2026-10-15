@@ -1,0 +1,65 @@
+variable "settings" { type = any }
+variable "environment_tags" { type = map(string) }
+variable "resource_tags" { type = map(string) }
+resource "aws_rds_cluster_instance" "this" {
+  apply_immediately                     = try(var.settings.apply_immediately, null)
+  auto_minor_version_upgrade            = try(var.settings.auto_minor_version_upgrade, null)
+  availability_zone                     = try(var.settings.availability_zone, null)
+  ca_cert_identifier                    = try(var.settings.ca_cert_identifier, null)
+  cluster_identifier                    = try(var.settings.cluster_identifier, null)
+  copy_tags_to_snapshot                 = try(var.settings.copy_tags_to_snapshot, null)
+  custom_iam_instance_profile           = try(var.settings.custom_iam_instance_profile, null)
+  db_parameter_group_name               = try(var.settings.db_parameter_group_name, null)
+  db_subnet_group_name                  = try(var.settings.db_subnet_group_name, null)
+  engine                                = try(var.settings.engine, null)
+  engine_version                        = try(var.settings.engine_version, null)
+  force_destroy                         = try(var.settings.force_destroy, null)
+  identifier                            = try(var.settings.identifier, null)
+  identifier_prefix                     = try(var.settings.identifier_prefix, null)
+  instance_class                        = try(var.settings.instance_class, null)
+  monitoring_interval                   = try(var.settings.monitoring_interval, null)
+  monitoring_role_arn                   = try(var.settings.monitoring_role_arn, null)
+  performance_insights_enabled          = try(var.settings.performance_insights_enabled, null)
+  performance_insights_kms_key_id       = try(var.settings.performance_insights_kms_key_id, null)
+  performance_insights_retention_period = try(var.settings.performance_insights_retention_period, null)
+  preferred_backup_window               = try(var.settings.preferred_backup_window, null)
+  preferred_maintenance_window          = try(var.settings.preferred_maintenance_window, null)
+  promotion_tier                        = try(var.settings.promotion_tier, null)
+  publicly_accessible                   = try(var.settings.publicly_accessible, null)
+  region                                = try(var.settings.region, null)
+  tags                                  = merge(var.environment_tags, coalesce(try(var.settings.tags, null), {}), var.resource_tags)
+  tags_all                              = try(var.settings.tags_all, null)
+  warning_event_categories              = try(var.settings.warning_event_categories, null)
+}
+output "fields" {
+  value = {
+    apply_immediately                     = aws_rds_cluster_instance.this.apply_immediately
+    arn                                   = aws_rds_cluster_instance.this.arn
+    availability_zone                     = aws_rds_cluster_instance.this.availability_zone
+    ca_cert_identifier                    = aws_rds_cluster_instance.this.ca_cert_identifier
+    cluster_identifier                    = aws_rds_cluster_instance.this.cluster_identifier
+    db_parameter_group_name               = aws_rds_cluster_instance.this.db_parameter_group_name
+    db_subnet_group_name                  = aws_rds_cluster_instance.this.db_subnet_group_name
+    dbi_resource_id                       = aws_rds_cluster_instance.this.dbi_resource_id
+    endpoint                              = aws_rds_cluster_instance.this.endpoint
+    engine                                = aws_rds_cluster_instance.this.engine
+    engine_version                        = aws_rds_cluster_instance.this.engine_version
+    engine_version_actual                 = aws_rds_cluster_instance.this.engine_version_actual
+    id                                    = aws_rds_cluster_instance.this.id
+    identifier                            = aws_rds_cluster_instance.this.identifier
+    identifier_prefix                     = aws_rds_cluster_instance.this.identifier_prefix
+    kms_key_id                            = aws_rds_cluster_instance.this.kms_key_id
+    monitoring_role_arn                   = aws_rds_cluster_instance.this.monitoring_role_arn
+    network_type                          = aws_rds_cluster_instance.this.network_type
+    performance_insights_enabled          = aws_rds_cluster_instance.this.performance_insights_enabled
+    performance_insights_kms_key_id       = aws_rds_cluster_instance.this.performance_insights_kms_key_id
+    performance_insights_retention_period = aws_rds_cluster_instance.this.performance_insights_retention_period
+    port                                  = aws_rds_cluster_instance.this.port
+    preferred_backup_window               = aws_rds_cluster_instance.this.preferred_backup_window
+    preferred_maintenance_window          = aws_rds_cluster_instance.this.preferred_maintenance_window
+    publicly_accessible                   = aws_rds_cluster_instance.this.publicly_accessible
+    region                                = aws_rds_cluster_instance.this.region
+    storage_encrypted                     = aws_rds_cluster_instance.this.storage_encrypted
+    writer                                = aws_rds_cluster_instance.this.writer
+  }
+}

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const SCHEMA_VERSION: u32 = 1;
-pub const TEMPLATE_VERSION: &str = "0.3.0";
+pub const TEMPLATE_VERSION: &str = "0.4.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +37,8 @@ pub enum Backend {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Values {
+    #[serde(default)]
+    pub managed_resources: BTreeMap<String, crate::catalog::ManagedResource>,
     pub aws_region: String,
     #[serde(default)]
     pub aws_profile: Option<String>,
@@ -117,6 +119,7 @@ pub fn default_egress() -> BTreeMap<String, Rule> {
 impl Default for Values {
     fn default() -> Self {
         Self {
+            managed_resources: BTreeMap::new(),
             aws_region: "ap-southeast-3".into(),
             aws_profile: None,
             tags: BTreeMap::new(),
@@ -210,6 +213,7 @@ impl Project {
                     bail!("{name}: duplicate S3 state location; each environment requires its own key");
                 }
             }
+            crate::catalog::validate(&env.values)?;
             for (key, sg) in &env.values.security_groups {
                 validate_key(key, "Security group key")?;
                 aws_id(&sg.subnet_id, "subnet-")?;

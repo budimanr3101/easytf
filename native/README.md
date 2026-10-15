@@ -53,3 +53,24 @@ swift test --package-path native --build-system native
 Native UI testing covered the wizard/environment/backend choices, EC2 editing, existing AMI picker using a fake AWS CLI, adding a fourth SG ingress rule, preview, and generate. CLI check and `terraform fmt -check` passed on the native-generated project. Rust bridge tests cover EC2 + ALB/NLB round-trip and stale-file rejection. Swift tests cover preserving advanced configuration, default tags, owner-only draft round-trip, protocol transitions, linked-resource removal guards, and ALB/NLB generation through the Rust bridge. Set EASYTF_DESKTOP_ENGINE to target/debug/easytf-desktop when running the native integration test.
 
 `EASYTF_DESKTOP_ENGINE` and `EASYTF_DESKTOP_STATE_DIR` override the bundled engine and draft location for development/test fixtures.
+
+## AWS resource catalog
+
+The native Add resource menu includes category shortcuts and a searchable catalog of 43 AWS resource types, in addition to the dedicated EC2, SG, ALB, and NLB editors:
+
+- Databases: standalone RDS, Aurora clusters/instances, subnet groups, and parameter groups.
+- Kubernetes: EKS clusters, managed node groups, Fargate profiles, addons, and access entries/policy associations. Cluster-only configurations are supported.
+- Storage and images: S3 buckets and settings, ECR repositories and lifecycle policies.
+- IAM and observability: roles, policies/attachments, instance profiles, CloudWatch logs and alarms.
+- Networking: VPCs, subnets, routes, route tables/associations, gateways, NAT/EIP, security groups and rules.
+- DNS and edge: Route53 zones/records, ACM certificates/validation, CloudFront distributions and origin access controls.
+
+Required fields appear first. Add optional settings as needed; nested blocks and lists have structured editors. Enter existing AWS IDs directly, or use **Link…** to select compatible outputs from another configured resource. Explicit dependencies are available for ordering that cannot be expressed through an input reference. Deleting a referenced resource is blocked. Resource tags merge with environment defaults.
+
+Literal settings are generated into `.tfvars`. Typed output references and explicit dependencies are generated into `managed-resources.tf`, with one module per resource so Terraform can order dependencies independently. Catalog outputs are exposed through `managed-resources-outputs.tf`. Existing resources entered as literal IDs do not require a data source; the dedicated EC2/SG/LB paths retain their existing discovery/data behavior.
+
+RDS and Aurora defaults enable AWS-managed master credentials, encryption, and deletion protection. Sensitive and write-only provider attributes are excluded from the generic editor. Existing credential ARNs or other sensitive configuration still need appropriate handling by the user. The catalog is derived from AWS provider 6.68.0; provider constraints, IAM permissions, DNS validation records, network reachability, and application-specific policies must be configured for the intended deployment.
+
+`examples/catalog-complete.json` is a synthetic validation fixture with 49 resources covering all 43 catalog types, not a production deployment blueprint. It passed Terraform formatting, provider validation, and an offline mocked plan; no AWS deployment was performed.
+
+Catalog maintenance: obtain the provider schema at `test-output/aws-schema.json`, then run `python3 scripts/build-resource-catalog.py`, `cargo fmt`, and `terraform fmt -recursive templates/catalog`. Regenerate the fixture with `python3 scripts/build-catalog-example.py`. The schema, module templates, and Rust template inventory are checked in.
