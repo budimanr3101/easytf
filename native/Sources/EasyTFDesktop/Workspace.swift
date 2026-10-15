@@ -102,6 +102,11 @@ import AppKit
     }
     func add(kind: String, key: String) {
         var resource: JSONValue
+        if kind == "application" || kind == "network" {
+            let name = String((key.replacingOccurrences(of: "_", with: "-") + "-" + environment).prefix(32)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+            set(LoadBalancerConfiguration.make(name: name, network: kind == "network"), path: valuesPath + ["load_balancers", key])
+            selection = "lb:" + key; addKind = nil; return
+        }
         if kind == "instances" {
             resource = .object(["name": .string(key + "-" + environment), "ami_id": .string(""), "instance_type": .string("t3.micro"), "subnet_id": .string(""), "existing_security_group_ids": .array([]), "security_group_keys": .array([]), "root_volume_gib": .number(20), "associate_public_ip": .bool(false), "tags": .object([:]), "configuration": .object([:])])
         } else {
@@ -113,16 +118,22 @@ import AppKit
         if kind == "security_groups" {
             let dependents = ["instances", "load_balancers"].flatMap { collection in values[collection].object.filter { $0.value["security_group_keys"].array.contains(.string(key)) }.map(\.key) }
             if !dependents.isEmpty { error = "This security group is used by: " + dependents.joined(separator: ", "); return }
-        } else {
+        } else if kind == "instances" {
             let dependents = values["load_balancers"].object.filter { $0.value["target_groups"].object.values.contains { $0["instance_keys"].array.contains(.string(key)) } }.map(\.key)
             if !dependents.isEmpty { error = "This EC2 resource is used by load balancers: " + dependents.joined(separator: ", "); return }
         }
         remove(path: valuesPath + [kind, key]); selection = "environment"
     }
-    func browse(kind: String, path: [String], multiple: Bool = false) {
+    func removeTargetGroup(loadBalancer: String, key: String) {
+        let base = valuesPath + ["load_balancers", loadBalancer]
+        let listeners = document.at(base + ["listeners"]).object.filter { $0.value["target_group_key"].text == key }.map(\.key).sorted()
+        guard listeners.isEmpty else { error = "Target group is used by listeners: " + listeners.joined(separator: ", ") + ". Choose another target group or remove those listeners first."; return }
+        remove(path: base + ["target_groups", key])
+    }
+    func browse(kind: String, path: [String], multiple: Bool = false, subnet: String? = nil) {
         discoveryKind = kind; discoveryPath = path; discoveryMultiple = multiple; discoveryItems = []; discoveryError = nil
         var request: [String: JSONValue] = ["operation": .string("discover"), "kind": .string(kind), "region": values["aws_region"], "profile": values["aws_profile"]]
-        if kind == "security-groups" { request["subnet"] = document.at(Array(path.dropLast()) + ["subnet_id"]) }
+        if kind == "security-groups" { request["subnet"] = subnet.map(JSONValue.string) ?? document.at(Array(path.dropLast()) + ["subnet_id"]) }
         perform(.object(request), finished: { self.discoveryItems = $0.array }, failed: { self.discoveryError = $0 })
     }
 }

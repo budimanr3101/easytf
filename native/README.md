@@ -22,7 +22,7 @@ The local development app is signed ad hoc; it is not a notarized distribution. 
 ## Workflow
 
 1. **New Project** selects a new folder name, dev/staging/prod environments, AWS region/profile, and local or existing-S3 backend. State keys are separate for every environment.
-2. **Add resource** creates EC2 or managed security-group entries with stable Terraform keys.
+2. **Add resource** creates EC2, managed security-group, Application Load Balancer, or Network Load Balancer entries with stable Terraform keys.
 3. EC2 has Basics, Networking, Access, Storage, Tags, and Advanced sections. Browse existing AMIs/subnets/SGs or enter IDs directly. Managed SG references use checkboxes. Tags and multiple EBS volumes have structured editors.
 4. SG supports multiple keyed ingress/egress rules. All-traffic rules clear their port values. Dependency checks block removal of resources still referenced by EC2 or ALB/NLB.
 5. **Review Terraform** validates inputs and shows generated files and pending file actions. This is a file generation preview, not `terraform plan`.
@@ -30,7 +30,9 @@ The local development app is signed ad hoc; it is not a notarized distribution. 
 
 EC2, SG, and LB icons use orange, green, and purple. Environment badges use blue for dev, amber for staging, and red for prod. Labels and icons still identify these categories without color.
 
-The first native version preserves existing ALB/NLB configuration and exposes it read-only; use the CLI to edit it. Less common EC2 options are editable as a JSON configuration object under Advanced. Save optional settings before switching sections. Common IAM/keypair/protection and EBS fields have native controls. AWS picker checks are read-only; AMI browsing is limited to Amazon Linux 2023 candidates, while custom IDs can be entered manually. Live AWS discovery was not verified against a real account.
+ALB/NLB editors include Basics, Networking, Target groups, Listeners, and Tags. Subnet and existing-SG pickers support multiple selections. Each listener selects a named target group. Target groups select project EC2 keys or existing IDs/IPv4s and configure health checks. HTTP/HTTPS and TCP/TLS/UDP/TCP_UDP choices follow the engine's supported protocols. HTTPS/TLS shows certificate ARN and optional SSL policy; switching to a plain protocol clears these fields. TCP health checks clear path/matcher. Target groups cannot be removed while listeners reference them. Removing an LB removes its nested listeners, groups, and attachments from the configuration while preserving EC2 and SG resources.
+
+Less common EC2 options are editable as a JSON configuration object under Advanced. Save optional settings before switching sections. Common IAM/keypair/protection and EBS fields have native controls. AWS picker checks are read-only; AMI browsing is limited to Amazon Linux 2023 candidates, while custom IDs can be entered manually. Live AWS discovery was not verified against a real account.
 
 ## Compatibility and drafts
 
@@ -48,6 +50,6 @@ cargo clippy --offline --all-targets -- -D warnings
 swift test --package-path native --build-system native
 ```
 
-Native UI testing covered the wizard/environment/backend choices, EC2 editing, existing AMI picker using a fake AWS CLI, adding a fourth SG ingress rule, preview, and generate. CLI check and `terraform fmt -check` passed on the native-generated project. Rust bridge tests cover EC2 + ALB/NLB round-trip and stale-file rejection. Swift tests cover preserving advanced configuration, default tags, and owner-only draft round-trip.
+Native UI testing covered the wizard/environment/backend choices, EC2 editing, existing AMI picker using a fake AWS CLI, adding a fourth SG ingress rule, preview, and generate. CLI check and `terraform fmt -check` passed on the native-generated project. Rust bridge tests cover EC2 + ALB/NLB round-trip and stale-file rejection. Swift tests cover preserving advanced configuration, default tags, owner-only draft round-trip, protocol transitions, linked-resource removal guards, and ALB/NLB generation through the Rust bridge. Set EASYTF_DESKTOP_ENGINE to target/debug/easytf-desktop when running the native integration test.
 
 `EASYTF_DESKTOP_ENGINE` and `EASYTF_DESKTOP_STATE_DIR` override the bundled engine and draft location for development/test fixtures.

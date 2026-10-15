@@ -108,4 +108,4 @@ Terraform requires version 1.10 or newer, below 2.0. The generated AWS provider 
 
 ## Native macOS application
 
-EasyTF also has a native SwiftUI workspace backed by the same Rust engine. Build with `./scripts/build-macos.sh`, then open `native/build/EasyTF.app`. It supports project/environment setup, EC2 and multi-rule SG editors, read-only AWS pickers, inherited tags, multiple EBS volumes, draft recovery, Terraform preview, and generation. See [native app documentation](native/README.md) for scope and verification.
+EasyTF also has a native SwiftUI workspace backed by the same Rust engine. Build with `./scripts/build-macos.sh`, then open `native/build/EasyTF.app`. It supports project/environment setup, EC2, multi-rule SG, and ALB/NLB editors with linked target groups/listeners, read-only AWS pickers, inherited tags, multiple EBS volumes, draft recovery, Terraform preview, and generation. See [native app documentation](native/README.md) for scope and verification.

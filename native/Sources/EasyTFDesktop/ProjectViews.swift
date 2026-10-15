@@ -43,13 +43,14 @@ struct AddResourceView: View {
     @ObservedObject var model: Workspace
     @State private var key = ""
     var kind: String { model.addKind ?? "instances" }
-    var valid: Bool { key.range(of: "^[a-zA-Z][a-zA-Z0-9_-]*$", options: .regularExpression) != nil && !model.keys(kind).contains(key) }
+    var collection: String { ["application", "network"].contains(kind) ? "load_balancers" : kind }
+    var valid: Bool { key.range(of: "^[a-zA-Z][a-zA-Z0-9_-]*$", options: .regularExpression) != nil && !model.keys(collection).contains(key) }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(kind == "instances" ? "Add EC2 instance" : "Add security group").font(.title2)
+            Text(kind == "instances" ? "Add EC2 instance" : (kind == "security_groups" ? "Add security group" : (kind == "application" ? "Add Application Load Balancer" : "Add Network Load Balancer"))).font(.title2)
             Text("Choose a stable Terraform resource key. Configure its AWS name in the editor.").foregroundStyle(.secondary)
             TextField("Resource key, e.g. web_primary", text: $key).textFieldStyle(.roundedBorder)
-            if model.keys(kind).contains(key) { Text("That resource key already exists.").foregroundStyle(.orange) }
+            if model.keys(collection).contains(key) { Text("That resource key already exists.").foregroundStyle(.orange) }
             HStack { Button("Cancel") { model.addKind = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Add resource") { model.add(kind: kind, key: key) }.buttonStyle(.borderedProminent).disabled(!valid).keyboardShortcut(.defaultAction) }
         }.padding(24).frame(width: 440)
     }
@@ -68,7 +69,7 @@ struct EnvironmentEditor: View {
                 Text("The backend was selected when this project was created. Existing backends require an explicit Terraform migration.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Default tags · all managed resources") { TagsEditor(model: model, path: model.valuesPath + ["tags"]) }
-            Section("Next step") { Text("Add an EC2 instance or security group from the sidebar. Review Terraform before writing files.").foregroundStyle(.secondary); Button("Add EC2 instance…") { model.addKind = "instances" } }
+            Section("Next step") { Text("Add EC2, security groups, or an ALB/NLB from the sidebar. Review Terraform before writing files.").foregroundStyle(.secondary); Button("Add EC2 instance…") { model.addKind = "instances" } }
         }.formStyle(.grouped)
     }
 }

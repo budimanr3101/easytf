@@ -88,23 +88,24 @@ struct WorkspaceView: View {
                 ResourceLabel(title: "Environment settings", symbol: "slider.horizontal.3", color: Theme.accent).tag("environment")
                 Section("EC2 instances") { ForEach(model.keys("instances"), id: \.self) { ResourceLabel(title: $0, symbol: "server.rack", color: Theme.ec2).tag("ec2:" + $0) } }
                 Section("Security groups") { ForEach(model.keys("security_groups"), id: \.self) { ResourceLabel(title: $0, symbol: "checkmark.shield", color: Theme.securityGroup).tag("sg:" + $0) } }
-                if !model.keys("load_balancers").isEmpty { Section("Load balancers") { ForEach(model.keys("load_balancers"), id: \.self) { ResourceLabel(title: $0, symbol: "network", color: Theme.loadBalancer).tag("lb:" + $0) } } }
+                Section("Load balancers") { ForEach(model.keys("load_balancers"), id: \.self) { ResourceLabel(title: $0, symbol: "network", color: Theme.loadBalancer).tag("lb:" + $0) } }
                 ResourceLabel(title: "Terraform review", symbol: "doc.text.magnifyingglass", color: Theme.accent).tag("review")
             }.listStyle(.sidebar).disabled(model.busy)
             Divider()
-            Menu { Button("EC2 instance") { model.addKind = "instances" }; Button("Security group") { model.addKind = "security_groups" } } label: { Label("Add resource", systemImage: "plus") }.padding(14).disabled(model.busy)
+            Menu {
+                Button("EC2 instance") { model.addKind = "instances" }
+                Button("Security group") { model.addKind = "security_groups" }
+                Divider()
+                Button("Application Load Balancer · ALB") { model.addKind = "application" }
+                Button("Network Load Balancer · NLB") { model.addKind = "network" }
+            } label: { Label("Add resource", systemImage: "plus") }.padding(14).disabled(model.busy)
         }
     }
     @ViewBuilder var editor: some View {
         if let selection = model.selection, selection.hasPrefix("ec2:") { InstanceEditor(model: model, key: String(selection.dropFirst(4))).id(model.environment + selection) }
         else if let selection = model.selection, selection.hasPrefix("sg:") { SecurityGroupEditor(model: model, key: String(selection.dropFirst(3))).id(model.environment + selection) }
-        else if let selection = model.selection, selection.hasPrefix("lb:") {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Load balancer configuration").font(.title2)
-                Text("Existing ALB/NLB configuration is preserved. Use the CLI to edit load balancers in this first native version.").foregroundStyle(.secondary)
-                ScrollView { Text(model.values["load_balancers"][String(selection.dropFirst(3))].pretty()).font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-            }.padding(24)
-        } else if model.selection == "review" { ReviewView(model: model) }
+        else if let selection = model.selection, selection.hasPrefix("lb:") { LoadBalancerEditor(model: model, key: String(selection.dropFirst(3))).id(model.environment + selection) }
+        else if model.selection == "review" { ReviewView(model: model) }
         else { EnvironmentEditor(model: model).id(model.environment) }
     }
     var inspector: some View {
@@ -125,6 +126,18 @@ struct WorkspaceView: View {
                         ResourceLabel(title: key, symbol: "server.rack", color: Theme.ec2).fontWeight(.medium)
                         Text("Subnet: " + model.values["instances"][key]["subnet_id"].text).font(.caption)
                         ForEach(model.values["instances"][key]["security_group_keys"].array.map(\.text), id: \.self) { Text("↳ Security group: " + $0).font(.caption) }
+                    }
+                }
+                ForEach(model.keys("load_balancers"), id: \.self) { key in
+                    VStack(alignment: .leading, spacing: 5) {
+                        ResourceLabel(title: key, symbol: "network", color: Theme.loadBalancer).fontWeight(.medium)
+                        ForEach(model.values["load_balancers"][key]["listeners"].object.keys.sorted(), id: \.self) { listener in
+                            Text("↳ Listener " + listener + " → " + model.values["load_balancers"][key]["listeners"][listener]["target_group_key"].text).font(.caption)
+                        }
+                        ForEach(model.values["load_balancers"][key]["target_groups"].object.keys.sorted(), id: \.self) { group in
+                            let targets = model.values["load_balancers"][key]["target_groups"][group]["instance_keys"].array.map(\.text)
+                            Text("↳ " + group + " → " + (targets.isEmpty ? "existing / unregistered targets" : targets.joined(separator: ", "))).font(.caption)
+                        }
                     }
                 }
                 Divider()
